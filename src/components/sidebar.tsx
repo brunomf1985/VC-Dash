@@ -8,7 +8,7 @@ import darkLogo from "@/imgs/vc-financas-logo-dark.png";
 
 const navItems = [
     { label: "Visão Geral", icon: Home, href: "/" },
-    { label: "Dashboards", icon: LayoutDashboard, href: "/dashboard" },
+    { label: "Dashboards", icon: LayoutDashboard, href: "/dashboards/visaofinanceira" },
     { label: "Análises", icon: BarChart2, href: "/analises" },
     { label: "Comparativos", icon: GitCompareArrows, href: "/comparativos" },
     { label: "Relatórios", icon: FileText, href: "/relatorios" },

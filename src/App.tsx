@@ -1,5 +1,5 @@
 import { Route, Routes } from "react-router-dom";
-import DashboardPage from "./pages/DeashboardPage"; // Importe a nova página
+import Visaofinanceira from "@/pages/dashboards/visaofinanceira";
 import IndexPage from "@/pages/index";
 import DefaultLayout from "./layouts/default";
 
@@ -15,8 +15,7 @@ function App() {
   return (
     <Routes>
       <Route element={<IndexPage />} path="/" />
-      {/* Adicione a nova rota para o dashboard */}
-      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/dashboards/visaofinanceira" element={<Visaofinanceira />} />
       <Route path="/analises" element={<PlaceholderPage title="Análises" />} />
       <Route path="/comparativos" element={<PlaceholderPage title="Comparativos" />} />
       <Route path="/relatorios" element={<PlaceholderPage title="Relatórios" />} />

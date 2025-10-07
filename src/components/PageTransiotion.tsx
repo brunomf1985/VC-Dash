@@ -19,7 +19,7 @@ const pageVariants = {
 const pageTransition = {
     type: 'tween',
     ease: 'anticipate',
-    duration: 1.0
+    duration: 0.5
 };
 
 export function PageTransition({ children }: { children: React.ReactNode }) {
