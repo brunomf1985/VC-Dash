@@ -127,3 +127,7 @@ html, body, #root {
     @apply bg-background text-foreground;
     }
 }
+
+.gap-in-legend .recharts-legend-item {
+    margin-right: 24px !important;
+}

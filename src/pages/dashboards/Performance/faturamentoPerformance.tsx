@@ -1,5 +1,5 @@
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, } from 'recharts';
-import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
+import { ValueType } from 'recharts/types/component/DefaultTooltipContent';
 import { useMemo } from 'react';
 import { RegistroFinanceiro } from '@/pages/types';
 import data from '../../exemplo.json'
@@ -76,7 +76,7 @@ export default function FaturamentoPerformance() {
             <PageTransition>
                 <Card className="p-4 bg-white dark:bg-[#1C1C1C] rounded-lg shadow-md min-h-[400px]">
                     <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Análise de Lucratividade Mensal</h3>
-                    <p className="text-xs text-gray-500 mb-4">Comparativo entre Faturamento, Gastos e Margem de Lucro.</p>
+                    <p className="text-xs text-gray-500 mb-4">Comparativo entre Faturamento e Margem de Contribuição.</p>
                     <ResponsiveContainer width="100%" height={300}>
                         <LineChart data={lineChartData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
@@ -111,7 +111,7 @@ export default function FaturamentoPerformance() {
                     </ResponsiveContainer>
                 </Card>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 pb-4">
                     <FaturamentoPorSecao vendas={data.vendas_por_secao} />
                     <TopProdutosCard vendas={data.vendas_por_produto} />
                 </div>

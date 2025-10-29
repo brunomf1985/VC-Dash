@@ -11,7 +11,10 @@ import { MonthlyRecord } from '../types';
 import Performance from './Performance/performance';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { CustomTooltip } from '@/components/CustomTooltip';
-import { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
+import { ValueType, } from 'recharts/types/component/DefaultTooltipContent';
+import FluxoDeCaixa from './Fluxo de caixa/fluxoDeCaixa';
+import Resultados from './Resultados/resultados';
+
 
 const VisaoFinanceiraContent = () => {
   const { isDarkMode } = useWatchTheme();
@@ -299,9 +302,9 @@ const VisaoFinanceiraContent = () => {
                     content={<CustomTooltip valueFormatter={tooltipValueFormatter} />}
                   />
                   <Legend />
-                  <Bar dataKey="Entradas" fill="#3b82f6" name="Entradas" onClick={console.log} />
-                  <Bar dataKey="Saídas" fill="#ef4444" name="Saídas" />
-                  <Bar dataKey="Resultado" fill="#22c55e" name="Resultado" />
+                  <Bar radius={[4, 4, 0, 0]} dataKey="Entradas" fill="#3b82f6" name="Entradas" onClick={console.log} />
+                  <Bar radius={[4, 4, 0, 0]} dataKey="Saídas" fill="#ef4444" name="Saídas" />
+                  <Bar radius={[4, 4, 0, 0]} dataKey="Resultado" fill="#22c55e" name="Resultado" />
                 </BarChart>
               </ResponsiveContainer>
             </CardBody>
@@ -451,9 +454,6 @@ const VisaoFinanceiraContent = () => {
             </div>
             <div className="flex items-end gap-2 mt-4">
               <div>
-                <span className={resultadoOperacionalCard.isPositive
-                  ? "text-2xl font-bold text-purple-600 dark:text-purple-300"
-                  : "text-2xl font-bold text-danger-500"}>R$</span>
                 <NumberTicker
                   value={resultadoOperacionalProjetadoData.percentage}
                   decimalPlaces={2}
@@ -463,6 +463,9 @@ const VisaoFinanceiraContent = () => {
                       : "text-2xl font-bold text-danger-500 dark:text-danger-500"
                   }
                 />
+                 <span className={resultadoOperacionalCard.isPositive
+                  ? "text-2xl font-bold text-purple-600 dark:text-purple-300"
+                  : "text-2xl font-bold text-danger-500"}>%</span>
               </div>
             </div>
             <p className={resultadoOperacionalCard.isPositive ? "text-xs text-purple-600 dark:text-purple-400 mt-2"
@@ -478,14 +481,6 @@ const VisaoFinanceiraContent = () => {
     </PageTransition>
   );
 };
-
-// Componente Placeholder para outras abas
-const PlaceholderContent = ({ title }: { title: string }) => (
-  <div className="w-full mt-6 flex items-center justify-center h-96">
-    <h2 className="text-2xl text-gray-500">{title}</h2>
-  </div>
-);
-
 
 export default function VisaoFinanceira() {
   const tabs = ['Visão Financeira', 'Performance', 'Fluxo de Caixa', 'Resultados'];
@@ -523,8 +518,8 @@ export default function VisaoFinanceira() {
           <div>
             {activeTab === 'Visão Financeira' && <VisaoFinanceiraContent />}
             {activeTab === 'Performance' && <Performance />}
-            {activeTab === 'Fluxo de Caixa' && <PlaceholderContent title="Fluxo de Caixa" />}
-            {activeTab === 'Resultados' && <PlaceholderContent title="Resultados" />}
+            {activeTab === 'Fluxo de Caixa' && <FluxoDeCaixa />}
+            {activeTab === 'Resultados' && <Resultados />}
           </div>
         </section>
       </PageTransition>

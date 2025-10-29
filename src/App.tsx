@@ -1,7 +1,11 @@
 import { Route, Routes } from "react-router-dom";
-import Visaofinanceira from "@/pages/dashboards/visaofinanceira";
-import IndexPage from "@/pages/index";
+
+import Perfil from "./pages/Perfil/perfil";
 import DefaultLayout from "./layouts/default";
+import Login from "./pages/Login/login";
+
+import IndexPage from "@/pages/index";
+import Visaofinanceira from "@/pages/dashboards/visaofinanceira";
 
 function PlaceholderPage({ title }: { title: string }) {
   return (
@@ -15,12 +19,18 @@ function App() {
   return (
     <Routes>
       <Route element={<IndexPage />} path="/" />
-      <Route path="/dashboards/visaofinanceira" element={<Visaofinanceira />} />
-      <Route path="/analises" element={<PlaceholderPage title="Análises" />} />
-      <Route path="/comparativos" element={<PlaceholderPage title="Comparativos" />} />
-      <Route path="/relatorios" element={<PlaceholderPage title="Relatórios" />} />
-      <Route path="/perfil" element={<PlaceholderPage title="Meu Perfil" />} />
-      <Route path="/sair" element={<PlaceholderPage title="Sair" />} />
+      <Route element={<Login />} path="*" />
+      <Route element={<Visaofinanceira />} path="/dashboards/visaofinanceira" />
+      <Route element={<PlaceholderPage title="Análises" />} path="/analises" />
+      <Route
+        element={<PlaceholderPage title="Comparativos" />}
+        path="/comparativos"
+      />
+      <Route
+        element={<PlaceholderPage title="Relatórios" />}
+        path="/relatorios"
+      />
+      <Route element={<Perfil />} path="/Perfil/perfil" />
     </Routes>
   );
 }

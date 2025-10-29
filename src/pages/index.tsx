@@ -10,7 +10,7 @@ import { Progress } from "@heroui/progress";
 import { CircleAlert, TrendingUp, TrendingDown } from "lucide-react";
 import { PageTransition } from "@/components/PageTransiotion";
 import { CustomTooltip } from "@/components/CustomTooltip";
-import { ValueType } from 'recharts/types/component/DefaultTooltipContent';
+import { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
 import { RegistroFinanceiro, MonthlyRecord } from "./types";
 
 const expenseColors = ["#22c55e", "#ef4444", "#3b82f6", "#f97316", "#8b5cf6", "#d946ef", "#14b8a6",];
@@ -233,26 +233,25 @@ export default function Index() {
     prefix: marginVariationData.isPositive ? "+" : "",
   };
 
-  const tooltipStyle = {
-    backgroundColor: isDarkMode ? '#252525' : '#f3f4f6',
-    border: `1px solid ${isDarkMode ? '#444' : '#d1d5db'}`,
-    color: isDarkMode ? '#ffffff' : '#000000'
-  };
+  const tooltipValueFormatter = (value: ValueType, name: NameType) => {
+    const percentNames = donutChartData.map(item => item.name);
 
-  const tooltipValueFormatter = (value: ValueType,) => {
     if (typeof value === 'number') {
+      if (percentNames.includes(name as string)) {
+        return `${value.toFixed(2)}%`;
+      }
 
       return new Intl.NumberFormat('pt-BR', {
-        compactDisplay: 'long',
         style: 'currency',
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 2,
         currency: 'BRL',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
       }).format(value);
     }
 
     return value;
   };
+
 
   return (
     <DefaultLayout>
