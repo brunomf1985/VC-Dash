@@ -4,48 +4,41 @@ import { MailIcon, LockIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useWatchTheme } from "@/hooks/WatchTheme";
+import { useAuth } from "@/contexts/AuthContext";
 import lightLogo from "@/imgs/vc-financas-logo.png";
 import darkLogo from "@/imgs/vc-financas-logo-dark.png";
-// Importe o useNavigate para o redirecionamento
 import { AnimatedThemeToggler } from "@/components/ui/theme-toggle";
+
+// const BASE_URL = 'https://wmsapp.vallysys.com.br:9000';
+// const LOGIN_ENDPOINT = '/login';
 
 export const Login: React.FC = () => {
   const { isDarkMode } = useWatchTheme();
-  const navigate = useNavigate(); // Hook para navegar
+  const navigate = useNavigate();
+  const { login, isLoading } = useAuth();
 
-  // --- Estados para controlar o formulário ---
   const [email, setEmail] = useState(`adm@granitoboneli.com.br`);
   const [password, setPassword] = useState("");
   const [isVisible, setIsVisible] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   const toggleVisibility = () => setIsVisible(!isVisible);
 
-  // --- Função de Login ---
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault(); // Impede o recarregamento da página
-    setIsLoading(true);
+    e.preventDefault();
     setError("");
 
-    // Simulação de chamada de API (substitua pela sua lógica real)
     try {
-      // Atraso de 1 segundo para simular a rede
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Lógica de autenticação (exemplo simples)
-      if (email === "adm@granitoboneli.com.br" && password.length > 0) {
-        // SUCESSO: Redireciona para o dashboard
-        // Você pode salvar o token/usuário no localStorage/Context aqui
-        navigate("/"); // <- Redireciona para a página principal
+      const success = await login(email, password);
+      
+      if (success) {
+        navigate("/");
       } else {
-        // ERRO:
         setError("Credenciais inválidas. Tente novamente.");
       }
     } catch (err) {
-      setError("Ocorreu um erro ao tentar fazer login.");
-    } finally {
-      setIsLoading(false);
+      console.error("Erro no login:", err);
+      setError("Ocorreu um erro de rede. Verifique sua conexão.");
     }
   };
 
@@ -77,19 +70,18 @@ export const Login: React.FC = () => {
             </p>
           </div>
 
-          {/* Alterado para 'form' com 'onSubmit' */}
           <form className="space-y-5" onSubmit={handleLogin}>
             <div>
               <Input
                 isRequired
                 classNames={{ input: "!text-inherit" }}
-                label="Email"
-                placeholder="seu_email@gmail.com"
+                label="CPF"
+                placeholder="12345678910"
                 startContent={<MailIcon className="text-gray-400" size={18} />}
-                type="email"
-                value={email} // Controlado pelo estado
+                type="number"
+                value={email}
                 variant="underlined"
-                onChange={(e) => setEmail(e.target.value)} // Atualiza o estado
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
 
@@ -111,22 +103,26 @@ export const Login: React.FC = () => {
                     )}
                   </button>
                 }
-                errorMessage={error} // Mostra a mensagem de erro
+                errorMessage={error}
+                isInvalid={!!error}
                 label="Senha"
                 placeholder="Digite sua senha"
                 startContent={<LockIcon className="text-gray-400" size={18} />}
                 type={isVisible ? "text" : "password"}
-                value={password} // Controlado pelo estado
+                value={password}
                 variant="underlined"
-                onChange={(e) => setPassword(e.target.value)} // Atualiza o estado
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError("");  
+                }}
               />
             </div>
 
             <Button
               className="w-full text-white dark:text-black font-medium bg-black dark:bg-white"
-              isLoading={isLoading} // Prop de carregamento
+              isLoading={isLoading}
               size="lg"
-              type="submit" // Define como botão de submissão do formulário
+              type="submit"
             >
               {isLoading ? "Entrando..." : "Entrar"}
             </Button>

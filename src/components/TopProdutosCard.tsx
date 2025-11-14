@@ -1,5 +1,6 @@
 import React from 'react';
 import { CrownIcon, Award } from 'lucide-react';
+import { useFilter } from '@/hooks/useFilter';
 
 const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
@@ -8,18 +9,28 @@ const CardBody = ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
 );
 
-interface Produto {
-    nome: string;
-    saldo_total: number;
-}
+const TopProdutosCard: React.FC = () => {
+    const { filteredData } = useFilter();
 
-interface TopProdutosCardProps {
-    vendas: Produto[];
-}
+    console.log('=== TopProdutosCard Debug ===');
+    console.log('filteredData.vendas_por_produto:', filteredData?.vendas_por_produto);
 
-const TopProdutosCard: React.FC<TopProdutosCardProps> = ({ vendas }) => {
+    if (!filteredData?.vendas_por_produto) {
+        console.log('Erro: vendas_por_produto não encontrado');
+        return (
+            <Card className="p-4 bg-white dark:bg-[#1C1C1C] rounded-lg shadow-md min-h-[400px]">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Top Produtos por Faturamento</h3>
+                <p className="text-xs text-gray-500 mb-4">Produtos com maior receita no período</p>
+                <CardBody>
+                    <div className="p-4">
+                        <p className="text-gray-500">Dados de vendas por produto não disponíveis</p>
+                    </div>
+                </CardBody>
+            </Card>
+        );
+    }
 
-    const vendasOrdenadas = [...vendas].sort((a, b) => b.saldo_total - a.saldo_total);
+    const vendasOrdenadas = [...filteredData.vendas_por_produto].sort((a, b) => b.saldo_total - a.saldo_total);
 
     const getMedalColor = (index: number): string => {
         switch (index) {

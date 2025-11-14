@@ -20,84 +20,208 @@ import {
 import { Card, CardHeader, CardBody } from "@heroui/card";
 import { ValueType } from "recharts/types/component/DefaultTooltipContent";
 
-import data from "../../exemplo.json";
+import { useFilter } from '@/hooks/useFilter';
+import { useWatchTheme } from "@/hooks/WatchTheme";
 
-import { RegistroFinanceiro } from "@/pages/types";
+
 import { PageTransition } from "@/components/PageTransiotion";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { CustomTooltip } from "@/components/CustomTooltip";
-import { useWatchTheme } from "@/hooks/WatchTheme";
 import { NameType } from "recharts/types/component/DefaultTooltipContent";
 
 
 export default function VisaoGeralResultados() {
-
+    const { filteredData, hasData, isLoadingApi } = useFilter();
     const { isDarkMode } = useWatchTheme();
 
-    const useLatestMonthInfo = (data: any) => {
+    // Early return se não há dados disponíveis
+    if (isLoadingApi) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-gray-500">Carregando dados de resultados...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!hasData || !filteredData) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <p className="text-gray-500 mb-2">Nenhum dado disponível</p>
+                    <p className="text-sm text-gray-400">Faça login e selecione um cliente para carregar dados da API</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Validar se os campos necessários para Resultados existem
+    const requiredFields = ['faturamento', 'evolucao_resultados_percentual'];
+    const missingFields = requiredFields.filter(field => !filteredData[field]);
+    
+    if (missingFields.length > 0) {
+        console.warn('Campos necessários para Resultados não encontrados:', missingFields);
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <p className="text-gray-500 mb-2">Dados insuficientes para Resultados</p>
+                    <p className="text-sm text-gray-400">Alguns dados necessários não estão disponíveis para este cliente</p>
+                    <p className="text-xs text-gray-400 mt-2">Campos faltando: {missingFields.join(', ')}</p>
+                </div>
+            </div>
+        );
+    }
+
+    const useLatestMonthInfo = () => {
         return useMemo(() => {
-            const faturamentoData = data.faturamento.find(
-                (item: any) => item.nome.trim() === "TOTAL VENDAS"
+            // Verificações de segurança antes de acessar as propriedades
+            if (!filteredData || !filteredData.faturamento) return {};
+            
+            // Buscar todas as fontes de dados relevantes para encontrar chaves comuns
+            const faturamentoData = filteredData.faturamento.find(
+                (item: any) => item.nome?.trim() === "TOTAL VENDAS"
             );
+            
+            // Campos opcionais com validação
+            const custosComerciaisData = filteredData.comparativo_cmv_vs_comerciais?.find(
+                (item: any) => item.nome?.trim() === "DESP. COMERCIAIS ÷ CMV (%)"
+            );
+            
+            const lucroBrutoData = filteredData.evolucao_resultados_percentual?.find(
+                (item: any) => item.nome?.trim() === "MARGEM DE CONTRIBUIÇÃO"
+            );
+            
+            let realizadoData = null;
+            let projetadoData = null;
+            
+            // Verificar se o campo comparativo existe antes de tentar acessá-lo
+            if (filteredData.comparativo_faturamento_projetado_vs_realizado) {
+                realizadoData = filteredData.comparativo_faturamento_projetado_vs_realizado.find(
+                    (item: any) => item.nome?.trim() === "FATURAMENTO REALIZADO"
+                );
+                projetadoData = filteredData.comparativo_faturamento_projetado_vs_realizado.find(
+                    (item: any) => item.nome?.trim() === "FATURAMENTO PROJETADO"
+                );
+            } else {
+                console.log('Campo comparativo_faturamento_projetado_vs_realizado não encontrado (opcional)');
+            }
 
             if (!faturamentoData) {
                 return { latestKey: 'N/A', latestName: 'N/A', latestDate: null, prevKey: 'N/A', prevName: 'N/A' };
             }
 
-            const hoje = new Date();
+            // Coletar chaves que existem em TODAS as fontes principais de dados
+            const todasAsFontes = [faturamentoData, custosComerciaisData, lucroBrutoData, realizadoData, projetadoData].filter(Boolean);
+            const chavesComDados = new Set<string>();
+
+            // Começar com as chaves do faturamento
+            Object.keys(faturamentoData).forEach(key => {
+                if (key.startsWith('saldo_') && key !== 'saldo_total' && faturamentoData[key] !== undefined) {
+                    // Verificar se existe em pelo menos 50% das outras fontes
+                    const existeEmOutrasFontes = todasAsFontes.filter(fonte => 
+                        fonte && fonte[key] !== undefined
+                    ).length;
+                    
+                    if (existeEmOutrasFontes >= Math.ceil(todasAsFontes.length * 0.5)) {
+                        chavesComDados.add(key);
+                    }
+                }
+            });
+
+            // Converter chaves para datas e ordenar
+            const mesesComDados: { key: string, date: Date }[] = [];
+            chavesComDados.forEach(key => {
+                const parts = key.split('_');
+                if (parts.length === 3) {
+                    const mesAbrev = parts[1];
+                    const ano = parseInt(parts[2]);
+                    
+                    const mesesMap: { [key: string]: number } = {
+                        'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+                        'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11
+                    };
+                    
+                    if (mesesMap[mesAbrev] !== undefined) {
+                        const date = new Date(ano, mesesMap[mesAbrev], 1);
+                        mesesComDados.push({ key, date });
+                    }
+                }
+            });
+
+            // Ordenar por data (mais recente primeiro)
+            mesesComDados.sort((a, b) => b.date.getTime() - a.date.getTime());
+
             let latestKey = 'N/A';
             let latestName = 'N/A';
             let latestDate: Date | null = null;
             let prevKey = 'N/A';
             let prevName = 'N/A';
 
-            for (let i = 0; i < 12; i++) {
-                const dataDoPeriodo = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
-                const mesAbrev = dataDoPeriodo.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
-                const ano = dataDoPeriodo.getFullYear();
-                const chaveDoMes = `saldo_${mesAbrev}_${ano}`;
-
-                if (faturamentoData[chaveDoMes] !== undefined && faturamentoData[chaveDoMes] > 0) {
-                    latestKey = chaveDoMes;
-                    const nomeDoMes = dataDoPeriodo.toLocaleString('pt-BR', { month: 'long' });
-                    latestName = `${nomeDoMes.charAt(0).toUpperCase() + nomeDoMes.slice(1)}`;
-                    latestDate = dataDoPeriodo;
-                    const dataMesAnterior = new Date(dataDoPeriodo.getFullYear(), dataDoPeriodo.getMonth() - 1, 1);
-                    const prevMesAbrev = dataMesAnterior.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
-                    const prevAno = dataMesAnterior.getFullYear();
-                    prevKey = `saldo_${prevMesAbrev}_${prevAno}`;
-                    const nomeMesAnterior = dataMesAnterior.toLocaleString('pt-BR', { month: 'long' });
-                    prevName = `${nomeMesAnterior.charAt(0).toUpperCase() + nomeMesAnterior.slice(1)}`;
-
-                    break;
-                }
+            if (mesesComDados.length > 0) {
+                const latest = mesesComDados[0];
+                latestKey = latest.key;
+                latestDate = latest.date;
+                const nomeDoMes = latest.date.toLocaleString('pt-BR', { month: 'long' });
+                latestName = `${nomeDoMes.charAt(0).toUpperCase() + nomeDoMes.slice(1)}`;
+                
+                // Calcular mês anterior
+                const dataMesAnterior = new Date(latest.date.getFullYear(), latest.date.getMonth() - 1, 1);
+                const prevMesAbrev = dataMesAnterior.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+                const prevAno = dataMesAnterior.getFullYear();
+                prevKey = `saldo_${prevMesAbrev}_${prevAno}`;
+                const nomeMesAnterior = dataMesAnterior.toLocaleString('pt-BR', { month: 'long' });
+                prevName = `${nomeMesAnterior.charAt(0).toUpperCase() + nomeMesAnterior.slice(1)}`;
             }
 
             return { latestKey, latestName, latestDate, prevKey, prevName };
 
-        }, [data]);
+        }, [filteredData]);
     };
 
 
-    const { latestKey, latestName, prevKey, prevName } = useLatestMonthInfo(data);
+    const { latestKey, latestName, prevKey, prevName } = useLatestMonthInfo();
+
+    // Debug temporário - remover depois
+    console.log('Debug visaoGeralResultados:', { latestKey, latestName, prevKey, prevName });
 
     const custosComerciais = useMemo(() => {
-        const custosComerciaisData = data.comparativo_cmv_vs_comerciais.find(
-            (item) => item.nome.trim() === "DESP. COMERCIAIS ÷ CMV (%)"
+        const custosComerciaisData = filteredData?.comparativo_cmv_vs_comerciais?.find(
+            (item: any) => item.nome?.trim() === "DESP. COMERCIAIS ÷ CMV (%)"
         );
+        
+        if (!latestKey || !custosComerciaisData) {
+            return { valor: 0, descricao: 'N/A', isPositive: false };
+        }
+        
         const valor = Number((custosComerciaisData as any)[latestKey] || 0);
         const meta = 10;
+        
+        // Debug temporário - remover depois
+        console.log('Debug custosComerciais:', { 
+            custosComerciaisData: custosComerciaisData ? 'found' : 'not found',
+            latestKey,
+            valor,
+            rawValue: custosComerciaisData ? (custosComerciaisData as any)[latestKey] : 'no data'
+        });
+        
         return {
             valor: valor,
             descricao: `${valor.toFixed(2)}% em ${latestName}`,
             isPositive: valor <= meta
         };
-    }, [data, latestKey, latestName]);
+    }, [filteredData, latestKey, latestName]);
 
     const lucroBruto = useMemo(() => {
-        const lucroBrutoData = data.evolucao_resultados_percentual.find(
-            (item) => item.nome.trim() === "MARGEM DE CONTRIBUIÇÃO"
+        const lucroBrutoData = filteredData?.evolucao_resultados_percentual?.find(
+            (item: any) => item.nome?.trim() === "MARGEM DE CONTRIBUIÇÃO"
         );
+        
+        if (!latestKey || !lucroBrutoData) {
+            return { valor: 0, descricao: 'N/A', isPositive: false };
+        }
+        
         const valor = Number((lucroBrutoData as any)[latestKey] || 0);
         const meta = 25; // Meta: Lucro acima de 25%
         return {
@@ -105,13 +229,16 @@ export default function VisaoGeralResultados() {
             descricao: `${valor.toFixed(2)}% em ${latestName}`,
             isPositive: valor >= meta 
         };
-    }, [data, latestKey, latestName]);
+    }, [filteredData, latestKey, latestName]);
 
     const crescimento = useMemo(() => {
-        const faturamentoData = data.faturamento.find(
-            (item) => item.nome.trim() === "TOTAL VENDAS"
+        const faturamentoData = filteredData?.faturamento?.find(
+            (item: any) => item.nome?.trim() === "TOTAL VENDAS"
         );
-        if (!faturamentoData) return { valor: 0, descricao: 'N/A', isPositive: false };
+        
+        if (!faturamentoData || !latestKey || !prevKey) {
+            return { valor: 0, descricao: 'N/A', isPositive: false };
+        }
 
         const valorAtual = Number((faturamentoData as any)[latestKey] || 0);
         const valorAnterior = Number((faturamentoData as any)[prevKey] || 0);
@@ -128,16 +255,19 @@ export default function VisaoGeralResultados() {
             descricao: `vs ${prevName}`,
             isPositive: crescimento >= 0
         };
-    }, [data, latestKey, prevKey, prevName]);
+    }, [filteredData, latestKey, prevKey, prevName]);
 
     const eficiencia = useMemo(() => {
-        const realizadoData = data.comparativo_faturamento_projetado_vs_realizado.find(
-            (item) => item.nome.trim() === "FATURAMENTO REALIZADO"
+        const realizadoData = filteredData?.comparativo_faturamento_projetado_vs_realizado?.find(
+            (item: any) => item.nome?.trim() === "FATURAMENTO REALIZADO"
         );
-        const projetadoData = data.comparativo_faturamento_projetado_vs_realizado.find(
-            (item) => item.nome.trim() === "FATURAMENTO PROJETADO"
+        const projetadoData = filteredData?.comparativo_faturamento_projetado_vs_realizado?.find(
+            (item: any) => item.nome?.trim() === "FATURAMENTO PROJETADO"
         );
-        if (!realizadoData || !projetadoData) return { valor: 0, descricao: 'N/A', isPositive: false };
+        
+        if (!realizadoData || !projetadoData || !latestKey) {
+            return { valor: 0, descricao: 'N/A', isPositive: false };
+        }
 
         const valorRealizado = Number((realizadoData as any)[latestKey] || 0);
         const valorProjetado = Number((projetadoData as any)[latestKey] || 0);
@@ -153,48 +283,78 @@ export default function VisaoGeralResultados() {
             descricao: `da meta em ${latestName}`,
             isPositive: eficiencia >= meta 
         };
-    }, [data, latestKey, latestName]);
+    }, [filteredData, latestKey, latestName]);
 
     const evolucaoResultadosData = useMemo(() => {
         // 1. Buscar as fontes de dados
-        const entradasData = data.recebimentos.find(
-            (item) => item.nome.trim() === "TOTAL RECEBIMENTOS"
+        const entradasData = filteredData?.recebimentos?.find(
+            (item: any) => item.nome?.trim() === "TOTAL RECEBIMENTOS"
         );
-        const custosVariaveisData = data.evolucao_resultados_valor.find(
-            (item) => item.nome.trim() === "CUSTOS VARIÁVEIS"
+        const custosVariaveisData = filteredData?.evolucao_resultados_valor?.find(
+            (item: any) => item.nome?.trim() === "CUSTOS VARIÁVEIS"
         );
-        const custosFixosData = data.evolucao_resultados_valor.find(
-            (item) => item.nome.trim() === "CUSTOS FIXOS OPERACIONAIS"
+        const custosFixosData = filteredData?.evolucao_resultados_valor?.find(
+            (item: any) => item.nome?.trim() === "CUSTOS FIXOS OPERACIONAIS"
         );
 
         if (!entradasData || !custosVariaveisData || !custosFixosData) {
             return [];
         }
 
-        const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
-            const mesAbrev = data.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
-            const ano = data.getFullYear();
-            return `saldo_${mesAbrev}_${ano}` as keyof RegistroFinanceiro;
-        };
+        // MUDANÇA: Buscar todas as chaves de mês existentes nos dados filtrados
+        const chavesComDados = new Set<string>();
+        
+        // Coletar todas as chaves que existem em qualquer fonte de dados com valores > 0
+        [entradasData, custosVariaveisData, custosFixosData].forEach(data => {
+            Object.keys(data).forEach(key => {
+                if (key.startsWith('saldo_') && key !== 'saldo_total' && 
+                    data[key] !== undefined && Number(data[key] || 0) > 0) {
+                    chavesComDados.add(key);
+                }
+            });
+        });
 
-        const mesesProcessados = [];
-        const hoje = new Date();
+        // Converter chaves para datas e ordenar
+        const mesesComDados: { key: string, date: Date }[] = [];
+        chavesComDados.forEach(key => {
+            const parts = key.split('_');
+            if (parts.length === 3) {
+                const mesAbrev = parts[1];
+                const ano = parseInt(parts[2]);
+                
+                const mesesMap: { [key: string]: number } = {
+                    'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+                    'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11
+                };
+                
+                if (mesesMap[mesAbrev] !== undefined) {
+                    const date = new Date(ano, mesesMap[mesAbrev], 1);
+                    mesesComDados.push({ key, date });
+                }
+            }
+        });
 
-        for (let i = 11; i >= 0; i--) {
-            const dataDoPeriodo = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
-            const ano = dataDoPeriodo.getFullYear();
+        // Ordenar por data (mais antigo primeiro para o gráfico)
+        mesesComDados.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-            const mesAbrev = dataDoPeriodo.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+        const mesesProcessados: Array<{
+            name: string;
+            tooltipLabel: string;
+            Entradas: number;
+            Resultado: number;
+            Margem: number;
+        }> = [];
+
+        mesesComDados.forEach(({ key, date }) => {
+            const ano = date.getFullYear();
+            const mesAbrev = date.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
             const mesAbrevCapitalizado = mesAbrev.charAt(0).toUpperCase() + mesAbrev.slice(1);
-
-            const nomeDoMes = dataDoPeriodo.toLocaleString('pt-BR', { month: 'long' });
+            const nomeDoMes = date.toLocaleString('pt-BR', { month: 'long' });
             const nomeDoMesCapitalizado = nomeDoMes.charAt(0).toUpperCase() + nomeDoMes.slice(1);
 
-            const chaveDoMes = criarChaveDoMes(dataDoPeriodo);
-
-            const valorEntradas = Number((entradasData as any)[chaveDoMes] || 0);
-            const valorCustoVariavel = Number((custosVariaveisData as any)[chaveDoMes] || 0);
-            const valorCustoFixo = Number((custosFixosData as any)[chaveDoMes] || 0);
+            const valorEntradas = Number((entradasData as any)[key] || 0);
+            const valorCustoVariavel = Number((custosVariaveisData as any)[key] || 0);
+            const valorCustoFixo = Number((custosFixosData as any)[key] || 0);
 
             const valorSaidas = valorCustoVariavel + valorCustoFixo;
             const valorResultado = valorEntradas - valorSaidas;
@@ -204,7 +364,8 @@ export default function VisaoGeralResultados() {
                 valorMargem = (valorResultado / valorEntradas) * 100;
             }
 
-            if (valorEntradas > 0 || valorSaidas > 0) {
+            // Só incluir se há pelo menos algum valor relevante (Entradas ou custos > 0)
+            if (valorEntradas > 0 || valorCustoVariavel > 0 || valorCustoFixo > 0) {
                 mesesProcessados.push({
                     name: `${mesAbrevCapitalizado} ${ano}`,
                     tooltipLabel: `${nomeDoMesCapitalizado} - ${ano}`,
@@ -213,11 +374,11 @@ export default function VisaoGeralResultados() {
                     'Margem': parseFloat(valorMargem.toFixed(2)),
                 });
             }
-        }
+        });
 
         return mesesProcessados;
 
-    }, [data]);
+    }, [filteredData]);
 
     const chartTooltipFormatter = (value: ValueType, name: NameType) => {
         if (name === 'Margem') {
@@ -475,7 +636,7 @@ export default function VisaoGeralResultados() {
                     </Card>
 
                 </div>
-                    <Card className="p-4 bg-white dark:bg-[#141313] mt-4" style={{ height: "400px" }}>
+                    <Card className="p-4 bg-white dark:bg-[#141313] mt-4" style={{ height: "500px" }}>
                         <CardHeader className='grid gap-1'>
                             <p className="text-base font-semibold">Evolução dos Resultados</p>
                             <p className="text-xs text-gray-500">Entradas, Resultado e Margem (%) mensal</p>

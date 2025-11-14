@@ -1,13 +1,42 @@
 import { useState } from 'react';
 import { PageTransition } from "@/components/PageTransiotion";
+import { useFilter } from '@/hooks/useFilter';
 import AnalisePerformance from './analisePerformance';
 import VisaoGeralPerformance from './visaogeralPerformance';
 import FaturamentoPerformance from './faturamentoPerformance';
 import EvolucaoPerformance from './evolucaoPerformance';
 
 export default function Performance() {
+    const { hasData, isLoadingApi } = useFilter();
     const tabs = ['Visão Geral', 'Faturamento', 'Evolução', 'Análise'];
     const [activeTab, setActiveTab] = useState(tabs[0]);
+
+    // Early return se não há dados disponíveis
+    if (isLoadingApi) {
+        return (
+            <PageTransition>
+                <div className="flex items-center justify-center h-64">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                        <p className="text-gray-500">Carregando dados de performance...</p>
+                    </div>
+                </div>
+            </PageTransition>
+        );
+    }
+
+    if (!hasData) {
+        return (
+            <PageTransition>
+                <div className="flex items-center justify-center h-64">
+                    <div className="text-center">
+                        <p className="text-gray-500 mb-2">Nenhum dado disponível</p>
+                        <p className="text-sm text-gray-400">Faça login e selecione um cliente para carregar dados da API</p>
+                    </div>
+                </div>
+            </PageTransition>
+        );
+    }
 
     return (
             <PageTransition>

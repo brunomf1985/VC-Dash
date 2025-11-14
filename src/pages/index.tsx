@@ -1,56 +1,87 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
-import { Card, CardHeader, CardBody } from "@heroui/card";
+import { Card } from "@heroui/card";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, } from "recharts";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { useWatchTheme } from "@/hooks/WatchTheme";
-import data from "@/pages/exemplo.json";
 import { Progress } from "@heroui/progress";
 import { CircleAlert, TrendingUp, TrendingDown } from "lucide-react";
 import { PageTransition } from "@/components/PageTransiotion";
 import { CustomTooltip } from "@/components/CustomTooltip";
 import { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
-import { RegistroFinanceiro, MonthlyRecord } from "./types";
+import { RegistroFinanceiro } from "./types";
+import { useFilter } from "@/hooks/useFilter";
+import { 
+  calculateGrowthPercentage
+} from "@/lib/dataHelpers";
+import { 
+  SafeMetricCard 
+} from "@/components/DataFallbacks";
+import { 
+  extractEssentialDashboardData,
+  validateSections,
+  validateVariationCards,
+  EssentialDashboardData
+} from "@/lib/essentialDataExtractor";
 
 const expenseColors = ["#22c55e", "#ef4444", "#3b82f6", "#f97316", "#8b5cf6", "#d946ef", "#14b8a6",];
 
 export default function Index() {
   const { isDarkMode } = useWatchTheme();
+  const { filteredData, hasData, isLoadingApi, apiError } = useFilter();
 
-  const receitaTotal =
-    data.recebimentos.find((item) => item.nome === "TOTAL RECEBIMENTOS")
-      ?.saldo_total || 0;
-  const despesas =
-    data.custos_operacionais_percentual.find(
-      (item) => item.nome === "CUSTO TOTAL"
-    )?.saldo_total || 0;
-  const lucroOperacional =
-    data.evolucao_resultados_valor.find(
-      (item) => item.nome === "RESULTADO OPERACIONAL"
-    )?.saldo_total || 0;
-  const margem =
-    data.evolucao_resultados_percentual.find(
-      (item) => item.nome === "MARGEM DE CONTRIBUIÇÃO"
-    )?.saldo_total || 0;
+
+
+  // Extrair apenas os dados essenciais que realmente usamos
+  const essentialData = useMemo(() => {
+    if (!filteredData) {
+      return {
+        receitaTotal: filteredData.faturamento[0].saldo_total,
+        despesas: 0,
+        lucroOperacional: 0,
+        margem: 0,
+        evolutionData: {},
+        donutData: [],
+        variationData: {}
+      } as EssentialDashboardData;
+    }
+    
+    return extractEssentialDashboardData(filteredData);
+  }, [filteredData]);
+
+  // Validar quais seções devem ser exibidas
+  const sectionValidation = useMemo(() => {
+    const validation = validateSections(essentialData);
+    return validation;
+  }, [essentialData]);
+
+  // Validar cards de variação individuais
+  const variationCardValidation = useMemo(() => {
+    const validation = validateVariationCards(essentialData);
+    return validation;
+  }, [essentialData]);
+
+  // Extrair valores para facilitar uso
+  const { receitaTotal, despesas, lucroOperacional, margem } = essentialData;
 
   // const evolutionChartData = useMemo(() => {
   //   const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   //   const monthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  //   const entradas: MonthlyRecord | undefined = data.recebimentos.find(
-  //     (d) => d.nome === "TOTAL RECEBIMENTOS"
+  //   const entradas: MonthlyRecord | undefined = filteredData.recebimentos.find(
+  //     (d: any) => d.nome === "TOTAL RECEBIMENTOS"
   //   );
   //   const custosVariaveis: MonthlyRecord | undefined =
-  //     data.evolucao_resultados_valor.find(
-  //       (d) => d.nome === "CUSTOS VARIÁVEIS"
+  //     filteredData.evolucao_resultados_valor.find(
+  //       (d: any) => d.nome === "CUSTOS VARIÁVEIS"
   //     );
   //   const custosFixos: MonthlyRecord | undefined =
-  //     data.evolucao_resultados_valor.find(
-  //       (d) => d.nome === "CUSTOS FIXOS OPERACIONAIS"
+  //     filteredData.evolucao_resultados_valor.find(
+  //       (d: any) => d.nome === "CUSTOS FIXOS OPERACIONAIS"
   //     );
   //   const resultado: MonthlyRecord | undefined =
-  //     data.evolucao_resultados_valor.find(
-  //       (d) => d.nome === "RESULTADO OPERACIONAL"
+  //     filteredData.evolucao_resultados_valor.find(
+  //       (d: any) => d.nome === "RESULTADO OPERACIONAL"
   //     );
 
   //   if (!entradas || !custosVariaveis || !custosFixos || !resultado) return [];
@@ -69,23 +100,10 @@ export default function Index() {
   // }, []);
 
   const evolutionChartData = useMemo(() => {
-    const entradas: MonthlyRecord | undefined = data.recebimentos.find(
-      (d) => d.nome === "TOTAL RECEBIMENTOS"
-    );
-    const custosVariaveis: MonthlyRecord | undefined =
-      data.evolucao_resultados_valor.find(
-        (d) => d.nome === "CUSTOS VARIÁVEIS"
-      );
-    const custosFixos: MonthlyRecord | undefined =
-      data.evolucao_resultados_valor.find(
-        (d) => d.nome === "CUSTOS FIXOS OPERACIONAIS"
-      );
-    const resultado: MonthlyRecord | undefined =
-      data.evolucao_resultados_valor.find(
-        (d) => d.nome === "RESULTADO OPERACIONAL"
-      );
+    // Usar dados essenciais já extraídos
+    const { entradas, custosVariaveis, custosFixos, resultado } = essentialData.evolutionData;
 
-    if (!custosVariaveis || !custosFixos || !resultado || !entradas) {
+    if (!entradas || !resultado) {
       return [];
     }
 
@@ -120,98 +138,126 @@ export default function Index() {
 
     return mesesProcessados.filter(mes => mes['entradas'] > 0 || mes['saidas'] > 0 || mes['resultado'] !== 0);  
 
-  }, [data]);
+  }, [essentialData]);
 
   const donutChartData = useMemo(() => {
+    // Usar dados essenciais já extraídos do custos_operacionais_percentual
+    if (!filteredData?.custos_operacionais_percentual) {
+      return [];
+    }
+    
     const ignoredTypes = ["CUSTO OPERAÇÃO", "CUSTO TOTAL"];
 
-    return data.custos_operacionais_percentual
+    return (filteredData.custos_operacionais_percentual || [])
       .filter(
-        (item) =>
+        (item: any) =>
           !ignoredTypes.includes(item.nome) &&
           item.saldo_total &&
           item.saldo_total > 0
       )
-      .map((item) => ({
+      .map((item: any) => ({
         name: item.nome.replace(/\/ OPERACIONAIS/g, "").trim(),
         value: parseFloat(item.saldo_total.toFixed(2)),
       }));
-  }, []);
+  }, [filteredData]);
+
+  const getVariationMetrics = (dataRecord: Record<string, any> | undefined) => {
+    if (!dataRecord) {
+      return {
+        currentValue: 0,
+        previousValue: 0,
+        periodLabel: "mês anterior"
+      };
+    }
+
+    // 1. Pega todas as chaves de saldo e as ordena
+    // Isso garante que "saldo_abr_2025" venha antes de "saldo_mai_2025"
+    const chavesDeSaldo = Object.keys(dataRecord)
+      .filter(key => key.startsWith('saldo_') && key !== 'saldo_total')
+      .sort(); // Ordena alfabeticamente (ex: saldo_ago_2024, saldo_abr_2025)
+
+    // 2. Se não tiver pelo menos 2 meses, não há como comparar
+    if (chavesDeSaldo.length < 2) {
+      return {
+        currentValue: Number(dataRecord[chavesDeSaldo[0]] || 0), // Retorna o único valor
+        previousValue: 0,
+        periodLabel: "período anterior"
+      };
+    }
+
+    // 3. Pega as duas últimas chaves (mês mais recente e o anterior)
+    const chaveMesMaisRecente = chavesDeSaldo[chavesDeSaldo.length - 1] as keyof typeof dataRecord;
+    const chaveMesAnterior = chavesDeSaldo[chavesDeSaldo.length - 2] as keyof typeof dataRecord;
+
+    // 4. Formata o nome do mês anterior para o texto do card
+    //    Formato esperado: saldo_mes_ano (ex: saldo_abr_2025)
+    const [_, mes, ano] = chaveMesAnterior.split('_');
+    let periodLabel = "mês anterior";
+    
+    if (mes && ano) {
+      // Capitaliza o mês e monta a string (ex: "Abril de 2025")
+      periodLabel = `${mes.charAt(0).toUpperCase() + mes.slice(1)} de ${ano}`;
+    }
+
+    // 5. Pega os valores numéricos
+    const currentValue = Number(dataRecord[chaveMesMaisRecente] || 0);
+    const previousValue = Number(dataRecord[chaveMesAnterior] || 0);
+    
+    return { currentValue, previousValue, periodLabel };
+  };
+
+  // --- Hooks useMemo Refatorados ---
 
   const revenueGrowthData = useMemo(() => {
-    const totalSales = data.faturamento.find(
-      (item) => item.nome.trim() === "TOTAL VENDAS"
-    );
-    if (!totalSales)
-      return { percentage: 0, period: "mês anterior", isPositive: true };
-
-    const currentMonthSales = totalSales.saldo_ago_2025;
-    const previousMonthSales = totalSales.saldo_jul_2025;
-    if (previousMonthSales === 0)
-      return {
-        percentage: currentMonthSales > 0 ? 100 : 0,
-        period: "Julho de 2025",
-        isPositive: true,
-      };
-
-    const percentage =
-      ((currentMonthSales - previousMonthSales) / previousMonthSales) * 100;
+    // Usar dados essenciais já extraídos
+    const { totalVendas } = essentialData.variationData;
+    
+    // Pega os valores dinamicamente
+    const { currentValue, previousValue, periodLabel } = getVariationMetrics(totalVendas);
+    
+    // Calcula a porcentagem
+    const growth = calculateGrowthPercentage(currentValue, previousValue);
+    
     return {
-      percentage: parseFloat(percentage.toFixed(2)),
-      period: "Julho de 2025",
-      isPositive: percentage >= 0,
+      percentage: growth.percentage,
+      period: periodLabel,
+      isPositive: growth.percentage >= 0, // Para receita, maior é melhor
     };
-  }, []);
+  }, [essentialData]);
 
   const costVariationData = useMemo(() => {
-    const totalCosts = data.custos_operacionais_percentual.find(
-      (item) => item.nome.trim() === "CUSTO TOTAL"
-    );
-    if (!totalCosts)
-      return { percentage: 0, period: "mês anterior", isPositive: true };
-
-    const currentMonthCosts = totalCosts.saldo_ago_2025;
-    const previousMonthCosts = totalCosts.saldo_jul_2025;
-    if (previousMonthCosts === 0)
-      return {
-        percentage: currentMonthCosts > 0 ? 100 : 0,
-        period: "Julho de 2025",
-        isPositive: false,
-      };
-
-    const percentage =
-      ((currentMonthCosts - previousMonthCosts) / previousMonthCosts) * 100;
+    // Usar dados essenciais já extraídos  
+    const { custoTotal } = essentialData.variationData;
+    
+    // Pega os valores dinamicamente
+    const { currentValue, previousValue, periodLabel } = getVariationMetrics(custoTotal);
+    
+    // Calcula a porcentagem
+    const growth = calculateGrowthPercentage(currentValue, previousValue);
+    
     return {
-      percentage: parseFloat(percentage.toFixed(2)),
-      period: "Julho de 2025",
-      isPositive: percentage <= 0,
+      percentage: growth.percentage,
+      period: periodLabel,
+      isPositive: growth.percentage <= 0, // Para custos, menor é melhor
     };
-  }, []);
+  }, [essentialData]);
 
   const marginVariationData = useMemo(() => {
-    const totalMargin = data.evolucao_resultados_percentual.find(
-      (item) => item.nome.trim() === "MARGEM DE CONTRIBUIÇÃO"
-    );
-    if (!totalMargin)
-      return { percentage: 0, period: "mês anterior", isPositive: true };
+    // Usar dados essenciais já extraídos
+    const { margemContribuicao } = essentialData.variationData;
+    
+    // Pega os valores dinamicamente
+    const { currentValue, previousValue, periodLabel } = getVariationMetrics(margemContribuicao);
 
-    const currentMonthMargin = totalMargin.saldo_ago_2025;
-    const previousMonthMargin = totalMargin.saldo_jul_2025;
-    if (previousMonthMargin === 0)
-      return {
-        percentage: currentMonthMargin > 0 ? 100 : 0,
-        period: "Julho de 2025",
-        isPositive: true,
-      };
-
-    const percentage =
-      ((currentMonthMargin - previousMonthMargin) / previousMonthMargin) * 100;
+    // Calcula a porcentagem
+    const growth = calculateGrowthPercentage(currentValue, previousValue);
+    
     return {
-      percentage: parseFloat(percentage.toFixed(2)),
-      period: "Julho de 2025",
-      isPositive: percentage >= 0,
+      percentage: growth.percentage,
+      period: periodLabel,
+      isPositive: growth.percentage >= 0, // Para margem, maior é melhor
     };
-  }, []);
+  }, [essentialData]);
 
   const revenueCard = {
     isPositive: revenueGrowthData.isPositive,
@@ -234,7 +280,7 @@ export default function Index() {
   };
 
   const tooltipValueFormatter = (value: ValueType, name: NameType) => {
-    const percentNames = donutChartData.map(item => item.name);
+    const percentNames = donutChartData.map((item: any) => item.name);
 
     if (typeof value === 'number') {
       if (percentNames.includes(name as string)) {
@@ -252,6 +298,42 @@ export default function Index() {
     return value;
   };
 
+
+
+
+
+
+  // Proteção: não renderizar se não há dados ou se há erro da API
+  if (isLoadingApi) {
+    return (
+      <DefaultLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-gray-500">Carregando dados...</p>
+          </div>
+        </div>
+      </DefaultLayout>
+    );
+  }
+
+  if (!hasData || !filteredData) {
+    return (
+      <DefaultLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-gray-500 mb-2">Nenhum dado disponível</p>
+            <p className="text-sm text-gray-400">Erro ao carregar dados da API</p>
+            {apiError && apiError.includes('Ticket Médio') && (
+              <p className="text-yellow-600 text-sm mt-2">
+                ⚠️ Alguns dados (Ticket Médio) não estão disponíveis para este cliente
+              </p>
+            )}
+          </div>
+        </div>
+      </DefaultLayout>
+    );
+  }
 
   return (
     <DefaultLayout>
@@ -276,94 +358,59 @@ export default function Index() {
             <CircleAlert size={16} />
             Dados importados de • Última atualização: 23/09/2025
           </Card>
-          <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-            <Card
-              className="p-4 bg-white dark:bg-[#141313] 
-                 transition-all duration-150 
-                 hover:-translate-y-1 
-                 hover:shadow-sm
-                 shadow-none
-                 default: hover:shadow-gray-400
-               dark:hover:shadow-blue-400"
-            >
-              <CardHeader>
-                <h4 className="font-bold text-large">Receita Total</h4>
-              </CardHeader>
-              <CardBody className="flex-row">
-                <p className="text-3xl font-bold">R$</p>
-                <NumberTicker className="text-3xl font-bold"
-                  value={receitaTotal}
-                  decimalPlaces={2}
-                />
-              </CardBody>
-            </Card>
-            <Card
-              className="p-4 bg-white dark:bg-[#141313] 
-                 transition-all duration-150 
-                 hover:-translate-y-1 
-                 hover:shadow-sm
-                 shadow-none
-                 default: hover:shadow-gray-400
-               dark:hover:shadow-blue-400"
-            >
-              <CardHeader>
-                <h4 className="font-bold text-large">Despesas</h4>
-              </CardHeader>
-              <CardBody className="flex-row">
-                <NumberTicker className="text-3xl font-bold"
-                  value={despesas}
-                  decimalPlaces={2}
-                />
-                <p className="text-3xl font-bold">%</p>
-              </CardBody>
-            </Card>
-            <Card
-              className="p-4 bg-white dark:bg-[#141313] 
-                 transition-all duration-150 
-                 hover:-translate-y-1 
-                 hover:shadow-sm
-                 shadow-none
-                 default: hover:shadow-gray-400
-               dark:hover:shadow-blue-400"
-            >
-              <CardHeader>
-                <h4 className="font-bold text-large">Lucro Operacional</h4>
-              </CardHeader>
-              <CardBody className="flex-row">
-                <p className="text-3xl font-bold">R$</p>
-                <NumberTicker className="text-3xl font-bold"
-                  value={lucroOperacional}
-                  decimalPlaces={2}
-                />
-              </CardBody>
-            </Card>
-            <Card
-              className="p-4 bg-white dark:bg-[#141313] 
-                 transition-all duration-150 
-                 hover:-translate-y-1 
-                 hover:shadow-sm
-                 shadow-none
-                 default: hover:shadow-gray-400
-               dark:hover:shadow-blue-400"
-            >
-              <CardHeader>
-                <h4 className="font-bold text-large">Margem</h4>
-              </CardHeader>
-              <CardBody className="flex-row">
-                <NumberTicker className="text-3xl font-bold"
-                  value={margem}
-                  decimalPlaces={2}
-                />
-                <p className="text-3xl font-bold">%</p>
-              </CardBody>
-            </Card>
-          </div>
+          {sectionValidation.showMainMetrics && (
+            <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+              <SafeMetricCard
+                title="Receita Total"
+                value={receitaTotal}
+                prefix="R$ "
+                isLoading={isLoadingApi}
+                hasData={hasData}
+                fallbackMessage="Dados de receita não disponíveis"
+              />
+              
+              <SafeMetricCard
+                title="Despesas"
+                value={despesas}
+                suffix="%"
+                isLoading={isLoadingApi}
+                hasData={hasData}
+                fallbackMessage="Dados de despesas não disponíveis"
+              />
+              
+              <SafeMetricCard
+                title="Lucro Operacional"
+                value={lucroOperacional}
+                prefix="R$ "
+                isLoading={isLoadingApi}
+                hasData={hasData}
+                fallbackMessage="Dados de lucro não disponíveis"
+              />
+              
+              <SafeMetricCard
+                title="Margem"
+                value={margem}
+                suffix="%"
+                isLoading={isLoadingApi}
+                hasData={hasData}
+                fallbackMessage="Dados de margem não disponíveis"
+              />
+            </div>
+          )}
 
-          <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-2 ">
-            <div
-              className="lg:col-span-2 w-full shadow-md p-4 rounded-xl bg-white dark:bg-[#141313]"
-              style={{ height: "400px" }}
-            >
+          {(sectionValidation.showEvolutionChart || sectionValidation.showDonutChart) && (
+            <div className={`w-full grid grid-cols-1 gap-2 ${
+              sectionValidation.showEvolutionChart && sectionValidation.showDonutChart 
+                ? 'lg:grid-cols-3' 
+                : 'lg:grid-cols-1'
+            }`}>
+              {sectionValidation.showEvolutionChart && (
+                <div
+                  className={`w-full shadow-md p-4 rounded-xl bg-white dark:bg-[#141313] ${
+                    sectionValidation.showDonutChart ? 'lg:col-span-2' : 'lg:col-span-1'
+                  }`}
+                  style={{ height: "400px" }}
+                >
               <div className="text-start mb-4">
                 <h2 className="text-lg font-semibold text-black dark:text-white">
                   Evolução Financeira
@@ -480,11 +527,14 @@ export default function Index() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-            <div
-              className="lg:col-span-1 w-full rounded-xl shadow-md p-4 flex items-center bg-white dark:bg-[#141313]"
-              style={{ height: "400px" }}
-            >
+                </div>
+              )}
+              
+              {sectionValidation.showDonutChart && (
+                <div
+                  className="lg:col-span-1 w-full rounded-xl shadow-md p-4 flex items-center bg-white dark:bg-[#141313]"
+                  style={{ height: "400px" }}
+                >
               <div className="w-1/2 h-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -499,7 +549,7 @@ export default function Index() {
                       nameKey="name"
                       innerRadius={60}
                     >
-                      {donutChartData.map((_entry, index) => (
+                      {donutChartData.map((_entry: any, index: number) => (
                         <Cell
                           key={`cell-${index}`}
                           fill={
@@ -515,7 +565,7 @@ export default function Index() {
                 </ResponsiveContainer>
               </div>
               <div className="w-1/2 h-full flex flex-col justify-center gap-4 pl-4">
-                {donutChartData.map((item, index) => (
+                {donutChartData.map((item: any, index: number) => (
                   <div key={item.name} className="flex items-center">
                     <div
                       className="w-3 h-3 rounded-full mr-2 flex-shrink-0"
@@ -532,11 +582,21 @@ export default function Index() {
                     </div>
                   </div>
                 ))}
-              </div>
+                </div>
+                </div>
+              )}
             </div>
-          </div>
-          <div className="w-full h-full grid md:grid-cols-3 gap-2">
-            <Card
+          )}
+          {sectionValidation.showVariationCards && (
+            <div className={`w-full h-full grid gap-2 ${
+              [variationCardValidation.showRevenueCard, variationCardValidation.showCostCard, variationCardValidation.showMarginCard].filter(Boolean).length === 1 
+                ? 'grid-cols-1' 
+                : [variationCardValidation.showRevenueCard, variationCardValidation.showCostCard, variationCardValidation.showMarginCard].filter(Boolean).length === 2 
+                  ? 'md:grid-cols-2' 
+                  : 'md:grid-cols-3'
+            }`}>
+              {variationCardValidation.showRevenueCard && (
+                <Card
               className="p-4 bg-white dark:bg-[#141313] 
              transition-all duration-150 
              hover:-translate-y-1 
@@ -586,17 +646,19 @@ export default function Index() {
                 {Math.abs(revenueGrowthData.percentage)}% em relação a{" "}
                 {revenueGrowthData.period}.
               </p>
-            </Card>
+                </Card>
+              )}
 
-            <Card
-              className="p-4 bg-white dark:bg-[#141313] 
-             transition-all duration-150 
-             hover:-translate-y-1 
-             hover:shadow-sm
-             shadow-none
-             default: hover:shadow-gray-400
-             dark:hover:shadow-blue-400"
-            >
+              {variationCardValidation.showCostCard && (
+                <Card
+                  className="p-4 bg-white dark:bg-[#141313] 
+                 transition-all duration-150 
+                 hover:-translate-y-1 
+                 hover:shadow-sm
+                 shadow-none
+                 default: hover:shadow-gray-400
+                 dark:hover:shadow-blue-400"
+                >
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-default-500">Variação de Custos</p>
@@ -635,17 +697,19 @@ export default function Index() {
                 {Math.abs(costVariationData.percentage)}% em relação a{" "}
                 {costVariationData.period}.
               </p>
-            </Card>
+                </Card>
+              )}
 
-            <Card
-              className="p-4 bg-white dark:bg-[#141313] 
-             transition-all duration-150 
-             hover:-translate-y-1 
-             hover:shadow-sm
-             shadow-none
-             default: hover:shadow-gray-400
-             dark:hover:shadow-blue-400"
-            >
+              {variationCardValidation.showMarginCard && (
+                <Card
+                  className="p-4 bg-white dark:bg-[#141313] 
+                 transition-all duration-150 
+                 hover:-translate-y-1 
+                 hover:shadow-sm
+                 shadow-none
+                 default: hover:shadow-gray-400
+                 dark:hover:shadow-blue-400"
+                >
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-default-500">Variação de Margem</p>
@@ -687,8 +751,10 @@ export default function Index() {
                 {Math.abs(marginVariationData.percentage)}% em relação a{" "}
                 {marginVariationData.period}.
               </p>
-            </Card>
-          </div>
+                </Card>
+              )}
+            </div>
+          )}
         </section>
       </PageTransition>
     </DefaultLayout>

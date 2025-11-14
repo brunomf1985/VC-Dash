@@ -1,5 +1,5 @@
 import { useMemo, } from 'react';
-import data from '../../exemplo.json';
+import { useFilter } from '@/hooks/useFilter';
 import { Percent, ShoppingCart, DollarSign, BarChartHorizontal } from "lucide-react";
 import { RegistroFinanceiro, RadarConfig } from '@/pages/types';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
@@ -15,53 +15,86 @@ import { ValueType, NameType } from 'recharts/types/component/DefaultTooltipCont
 
 
 export default function VisaoGeralPerformance() {
+    const { filteredData, hasData, isLoadingApi } = useFilter();
+
+    // Early return se não há dados disponíveis
+    if (isLoadingApi) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-gray-500">Carregando dados de performance...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!hasData || !filteredData) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <p className="text-gray-500 mb-2">Nenhum dado disponível</p>
+                    <p className="text-sm text-gray-400">Faça login e selecione um cliente para carregar dados da API</p>
+                </div>
+            </div>
+        );
+    }
 
     const margemLucroData = useMemo(() => {
-        const resultadoFinal = data.evolucao_resultados_percentual.find((item: RegistroFinanceiro) => item.nome.trim() === "RESULTADO FINAL");
+        const resultadoFinal = filteredData?.evolucao_resultados_percentual?.find((item: RegistroFinanceiro) => item.nome?.trim() === "RESULTADO FINAL");
         const media = resultadoFinal?.media ?? 0;
         const meta = 35;
         const diff = media - meta;
         return { valor: media, meta, isPositive: media >= meta, percentage: 0, period: "mês anterior", dif: diff };
-    }, []);
+    }, [filteredData]);
 
     const ticketMedioData = useMemo(() => {
-        const ticketMedio = data.faturamento.find((item: RegistroFinanceiro) => item.nome.trim() === "TICKET MÉDIO");
+        const ticketMedio = filteredData?.faturamento?.find((item: RegistroFinanceiro) => item.nome?.trim() === "TICKET MÉDIO");
+        
+        // Proteção para quando não há dados de ticket médio
+        if (!ticketMedio) {
+            console.warn('Dados de Ticket Médio não encontrados');
+            return { valor: 0, meta: 5000, isPositive: false, dif: 0 };
+        }
+        
         const total = ticketMedio?.saldo_total ?? 0;
         const meta = 5000
         const diff = (total * 100 / meta) * 100
         return { valor: total, meta, isPositive: total >= meta, dif: diff };
-    }, []);
+    }, [filteredData]);
 
     const faturamentoMedioDiarioData = useMemo(() => {
-        const faturamentoDiario = data.faturamento.find((item: RegistroFinanceiro) => item.nome.trim() === "MÉDIA DIÁRIA DE VENDAS");
+        const faturamentoDiario = filteredData?.faturamento?.find((item: RegistroFinanceiro) => item.nome?.trim() === "MÉDIA DIÁRIA DE VENDAS");
         const media = faturamentoDiario?.media ?? 0;
         const meta = 50000;
         const diff = (media / meta) * 100;
         return { valor: media, meta, isPositive: media >= meta, dif: diff };
-    }, []);
+    }, [filteredData]);
 
     const custosComerciaisData = useMemo(() => {
-        const custos = data.custos_operacionais_percentual.find((item: RegistroFinanceiro) => item.nome.trim() === "COMERCIAIS");
+        const custos = filteredData?.custos_operacionais_percentual?.find((item: RegistroFinanceiro) => item.nome?.trim() === "COMERCIAIS");
         const media = custos?.media ?? 0;
         const meta = 15.0;
         const diff = (media / meta) * 100;
         return { valor: media, meta, isPositive: media >= meta, dif: diff, };
-    }, []);
+    }, [filteredData]);
 
 
 
 
     // Configurações do grafico de linhas de ticket e cupons
     const evolutionChartData = useMemo(() => {
-        const emissaoCupons: RegistroFinanceiro | undefined = data.faturamento.find(
-            (item: RegistroFinanceiro) => item.nome.trim() === "EMISSÃO DE CUPONS"
+        const emissaoCupons: RegistroFinanceiro | undefined = filteredData?.faturamento?.find(
+            (item: RegistroFinanceiro) => item.nome?.trim() === "EMISSÃO DE CUPONS"
         );
 
-        const ticketMedioDados: RegistroFinanceiro | undefined = data.faturamento.find(
-            (item: RegistroFinanceiro) => item.nome.trim() === "TICKET MÉDIO"
+        const ticketMedioDados: RegistroFinanceiro | undefined = filteredData?.faturamento?.find(
+            (item: RegistroFinanceiro) => item.nome?.trim() === "TICKET MÉDIO"
         );
 
-        if (!emissaoCupons || !ticketMedioDados) {
+        // Proteção: permitir gráfico mesmo sem um dos dados
+        if (!emissaoCupons && !ticketMedioDados) {
+            console.warn('Dados de Emissão de Cupons e Ticket Médio não encontrados');
             return [];
         }
 
@@ -92,7 +125,7 @@ export default function VisaoGeralPerformance() {
 
         return mesesProcessados.filter(mes => mes['Emissão de Cupons'] > 0 || mes['Ticket Médio'] > 0);
 
-    }, [data]); 
+    }, [filteredData]); 
 
     const PONTUACAO_MAXIMA = 120;
     const FATOR_SUPERMETA = 1.5;
@@ -143,33 +176,39 @@ export default function VisaoGeralPerformance() {
         const radarChartConfig: RadarConfig[] = [
             {
                 subject: 'Margem de Lucro',
-                getValor: (d: typeof data) => d.evolucao_resultados_percentual.find((item) => item.nome.trim() === "RESULTADO FINAL")?.media ?? 0,
-                getMeta: (d: typeof data) => d.evolucao_resultados_percentual.find((item) => item.nome.trim() === "RESULTADO FINAL")?.media_sist ?? 0,
+                getValor: (d: any) => d.evolucao_resultados_percentual.find((item: any) => item.nome.trim() === "RESULTADO FINAL")?.media ?? 0,
+                getMeta: (d: any) => d.evolucao_resultados_percentual.find((item: any) => item.nome.trim() === "RESULTADO FINAL")?.media_sist ?? 0,
                 tipoFormula: 'maiorMelhor'
             },
             {
                 subject: 'Ticket Médio',
-                getValor: (d: typeof data) => d.faturamento.find((item) => item.nome.trim() === "TICKET MÉDIO")?.media ?? 0,
-                getMeta: (d: typeof data) => d.faturamento.find((item) => item.nome.trim() === "TICKET MÉDIO")?.media_sist ?? 0,
+                getValor: (d: any) => {
+                    const ticketItem = d.faturamento?.find((item: any) => item.nome?.trim() === "TICKET MÉDIO");
+                    return ticketItem ? (ticketItem.media ?? 0) : 0;
+                },
+                getMeta: (d: any) => {
+                    const ticketItem = d.faturamento?.find((item: any) => item.nome?.trim() === "TICKET MÉDIO");
+                    return ticketItem ? (ticketItem.media_sist ?? 0) : 0;
+                },
                 tipoFormula: 'maiorMelhor'
             },
             {
                 subject: 'Faturamento',
-                getValor: (d: typeof data) => d.faturamento.find((item) => item.nome.trim() === "TOTAL VENDAS")?.media ?? 0,
-                getMeta: (d: typeof data) => d.faturamento.find((item) => item.nome.trim() === "TOTAL VENDAS")?.media_sist ?? 0,
+                getValor: (d: any) => d.faturamento.find((item: any) => item.nome.trim() === "TOTAL VENDAS")?.media ?? 0,
+                getMeta: (d: any) => d.faturamento.find((item: any) => item.nome.trim() === "TOTAL VENDAS")?.media_sist ?? 0,
                 tipoFormula: 'maiorMelhor'
             },
             {
                 subject: 'Custos',
-                getValor: (d: typeof data) => d.custos_operacionais_percentual.find((item) => item.nome.trim() === "COMERCIAIS")?.media ?? 0,
-                getMeta: (d: typeof data) => d.custos_operacionais_percentual.find((item) => item.nome.trim() === "COMERCIAIS")?.media_sist ?? 0,
+                getValor: (d: any) => d.custos_operacionais_percentual.find((item: any) => item.nome.trim() === "COMERCIAIS")?.media ?? 0,
+                getMeta: (d: any) => d.custos_operacionais_percentual.find((item: any) => item.nome.trim() === "COMERCIAIS")?.media_sist ?? 0,
                 tipoFormula: 'menorMelhor'
             },
             {
                 subject: 'Crescimento',
-                getValor: (d: typeof data) => {
-                    const vendasIniciais = d.faturamento.find((item) => item.nome.trim() === "TOTAL VENDAS")?.saldo_jan_2025 ?? 0;
-                    const vendasFinais = d.faturamento.find((item) => item.nome.trim() === "TOTAL VENDAS")?.saldo_ago_2025 ?? 0;
+                getValor: (d: any) => {
+                    const vendasIniciais = d.faturamento.find((item: any) => item.nome.trim() === "TOTAL VENDAS")?.saldo_jan_2025 ?? 0;
+                    const vendasFinais = d.faturamento.find((item: any) => item.nome.trim() === "TOTAL VENDAS")?.saldo_ago_2025 ?? 0;
                     return vendasIniciais > 0 ? ((vendasFinais - vendasIniciais) / vendasIniciais) * 100 : 0;
                 },
                 getMeta: () => 10,
@@ -177,8 +216,8 @@ export default function VisaoGeralPerformance() {
             },
             {
                 subject: 'Eficiência',
-                getValor: (d: typeof data) => d.evolucao_resultados_percentual.find((item) => item.nome.trim() === "RESULTADO OPERACIONAL")?.media ?? 0,
-                getMeta: (d: typeof data) => d.evolucao_resultados_percentual.find((item) => item.nome.trim() === "RESULTADO OPERACIONAL")?.media_sist,
+                getValor: (d: any) => d.evolucao_resultados_percentual.find((item: any) => item.nome.trim() === "RESULTADO OPERACIONAL")?.media ?? 0,
+                getMeta: (d: any) => d.evolucao_resultados_percentual.find((item: any) => item.nome.trim() === "RESULTADO OPERACIONAL")?.media_sist,
                 tipoFormula: 'maiorMelhor'
             }
         ];
@@ -188,8 +227,8 @@ export default function VisaoGeralPerformance() {
         const chartData = [];
 
         for (const config of radarChartConfig) {
-            const valorRealizado = config.getValor(data);
-            const valorMeta = config.getMeta(data);
+            const valorRealizado = config.getValor(filteredData);
+            const valorMeta = config.getMeta(filteredData);
 
             rawValues[config.subject] = valorRealizado;
 
@@ -210,7 +249,7 @@ export default function VisaoGeralPerformance() {
         }
 
         return chartData;
-    }, [data]);
+    }, [filteredData]);
 
 
     const tooltipValueFormatter = (value: ValueType, name: NameType) => {

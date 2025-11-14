@@ -3,7 +3,7 @@ import DefaultLayout from "@/layouts/default";
 import { title } from "@/components/primitives";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { PageTransition } from "@/components/PageTransiotion";
-import data from '../exemplo.json';
+import { useFilter } from '@/hooks/useFilter';
 import { Area, AreaChart, BarChart, Bar, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
 import { useWatchTheme } from '@/hooks/WatchTheme';
 import { TrendingUp, TrendingDown } from "lucide-react";
@@ -18,83 +18,185 @@ import Resultados from './Resultados/resultados';
 
 const VisaoFinanceiraContent = () => {
   const { isDarkMode } = useWatchTheme();
-  const faturamentoTotal = data.faturamento.find(item => item.nome.trim() === 'TOTAL VENDAS')?.saldo_total || 0;
-  const recebimentoTotal = data.recebimentos.find(item => item.nome.trim() === 'TOTAL RECEBIMENTOS')?.saldo_total || 0;
-  const pagamentosTotais = (data.evolucao_resultados_valor.find(item => item.nome.trim() === 'CUSTOS VARIÁVEIS')?.saldo_total || 0) + (data.evolucao_resultados_valor.find(item => item.nome.trim() === 'CUSTOS FIXOS OPERACIONAIS')?.saldo_total || 0);
-  const resultadoLiquido = data.evolucao_resultados_valor.find(item => item.nome.trim() === 'RESULTADO OPERACIONAL')?.saldo_total || 0;
-  const mediaMensalFaturamento = data.faturamento.find(item => item.nome.trim() === 'TOTAL VENDAS')?.media || 0;
-  const taxaRecebimento = (recebimentoTotal / faturamentoTotal) * 100;
+  const { filteredData } = useFilter();
+
+  // Função para calcular meta ajustada ao período filtrado
+  const calculateAdjustedMeta = (baseMeta: number, dataItem: any) => {
+    if (!dataItem || baseMeta <= 0) return baseMeta;
+
+    // Contar quantos meses têm dados no período filtrado
+    const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+    let monthsWithData = 0;
+
+    months.forEach(month => {
+      const key = `saldo_${month}_2025`;
+      const value = dataItem[key];
+      // Considera como mês com dados se o valor existe e não é undefined/null
+      // (mesmo que seja 0, pois 0 pode ser um valor válido)
+      if (value !== undefined && value !== null) {
+        monthsWithData++;
+      }
+    });
+
+    // Se temos dados mensais, calcular meta proporcional
+    if (monthsWithData > 0) {
+      // Para metas percentuais (como 5% ao ano):
+      // A meta permanece a mesma em % independente do período
+      // Exemplo: meta de 5% é 5% seja em 1 mês ou 6 meses
+
+      // Para metas de valor absoluto, seria diferente:
+      // metaMensal = baseMeta / 12; return metaMensal * monthsWithData;
+
+      // Como estamos lidando com percentuais de resultado, 
+      // mantemos a meta original (5% é 5% independente do período)
+      return baseMeta;
+    }
+
+    // Se não há dados mensais, usar meta original
+    return baseMeta;
+  };
+  const faturamentoTotal = filteredData.faturamento?.find((item: any) => item.nome.trim() === 'TOTAL VENDAS')?.saldo_total || 0;
+  const recebimentoTotal = filteredData.recebimentos?.find((item: any) => item.nome.trim() === 'TOTAL RECEBIMENTOS')?.saldo_total || 0;
+
+  // Calcular pagamentos totais de forma alternativa usando custos percentuais
+  const pagamentosTotais = useMemo(() => {
+    // Tentar método original primeiro
+    const custosVariaveis = filteredData.evolucao_resultados_valor?.find((item: any) => item.nome.trim() === 'CUSTOS VARIÁVEIS')?.saldo_total || 0;
+    const custosFixos = filteredData.evolucao_resultados_valor?.find((item: any) => item.nome.trim() === 'CUSTOS FIXOS OPERACIONAIS')?.saldo_total || 0;
+
+    if (custosVariaveis > 0 || custosFixos > 0) {
+      return custosVariaveis + custosFixos;
+    }
+
+    // Método alternativo: calcular usando custo percentual
+    const custoPercentual = filteredData.custos_operacionais_percentual?.find((item: any) => item.nome.trim() === 'CUSTO TOTAL')?.saldo_total || 0;
+    if (custoPercentual > 0 && faturamentoTotal > 0) {
+      return faturamentoTotal * (custoPercentual / 100);
+    }
+
+    return 0;
+  }, [filteredData, faturamentoTotal]);
+
+  // Calcular resultado líquido alternativo
+  const resultadoLiquido = useMemo(() => {
+    // Tentar método original primeiro
+    const resultadoOriginal = filteredData.evolucao_resultados_valor?.find((item: any) => item.nome.trim() === 'RESULTADO OPERACIONAL')?.saldo_total || 0;
+
+    if (resultadoOriginal > 0) {
+      return resultadoOriginal;
+    }
+
+    // Método alternativo: Receita - Pagamentos
+    if (recebimentoTotal > 0 && pagamentosTotais > 0) {
+      return recebimentoTotal - pagamentosTotais;
+    }
+
+    return 0;
+  }, [filteredData, recebimentoTotal, pagamentosTotais]);
+  const mediaMensalFaturamento = filteredData.faturamento?.find((item: any) => item.nome.trim() === 'TOTAL VENDAS')?.media || 0;
+  // Novo (com correção)
+  const taxaRecebimento = faturamentoTotal > 0
+    ? (recebimentoTotal / faturamentoTotal) * 100
+    : 0;
 
   const evolutionChartData = useMemo(() => {
     const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago"];
-    const recebimentosData = data.recebimentos.find(d => d.nome === 'TOTAL RECEBIMENTOS');
-    const faturamentoData = data.faturamento.find(d => d.nome.trim() === 'TOTAL VENDAS');
+    const recebimentosData = filteredData.recebimentos?.find((d: any) => d.nome === 'TOTAL RECEBIMENTOS');
+    const faturamentoData = filteredData.faturamento?.find((d: any) => d.nome.trim() === 'TOTAL VENDAS');
 
     if (!recebimentosData || !faturamentoData) return [];
 
     return months.map(month => {
       const monthKey = `saldo_${month}_2025` as keyof typeof recebimentosData;
+      const recebimentos = recebimentosData[monthKey] || 0;
+      const vendas = faturamentoData[monthKey] || 0;
       return {
         month: month.charAt(0).toUpperCase() + month.slice(1),
-        Recebimentos: recebimentosData[monthKey] || 0,
-        Vendas: faturamentoData[monthKey] || 0,
+        Recebimentos: recebimentos,
+        Vendas: vendas,
       };
-    });
-  }, []);
+    }).filter(item => item.Recebimentos > 0 || item.Vendas > 0);
+  }, [filteredData]);
 
   const barChartData = useMemo(() => {
     const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago"];
-    const entradasData = data.recebimentos.find(d => d.nome.trim() === "TOTAL RECEBIMENTOS") as MonthlyRecord | undefined;
-    const custosVariaveisData = data.evolucao_resultados_valor.find(d => d.nome.trim() === "CUSTOS VARIÁVEIS") as MonthlyRecord | undefined;
-    const custosFixosData = data.evolucao_resultados_valor.find(d => d.nome.trim() === "CUSTOS FIXOS OPERACIONAIS") as MonthlyRecord | undefined;
-    const resultadoData = data.evolucao_resultados_valor.find(d => d.nome.trim() === "RESULTADO OPERACIONAL") as MonthlyRecord | undefined;
+    const entradasData = filteredData.recebimentos?.find((d: any) => d.nome.trim() === "TOTAL RECEBIMENTOS") as MonthlyRecord | undefined;
+    const custosVariaveisData = filteredData.evolucao_resultados_valor?.find((d: any) => d.nome.trim() === "CUSTOS VARIÁVEIS") as MonthlyRecord | undefined;
+    const custosFixosData = filteredData.evolucao_resultados_valor?.find((d: any) => d.nome.trim() === "CUSTOS FIXOS OPERACIONAIS") as MonthlyRecord | undefined;
+    const resultadoData = filteredData.evolucao_resultados_valor?.find((d: any) => d.nome.trim() === "RESULTADO OPERACIONAL") as MonthlyRecord | undefined;
 
     if (!entradasData || !custosVariaveisData || !custosFixosData || !resultadoData) return [];
 
     return months.map(month => {
       const key = `saldo_${month}_2025`;
+      const entradas = entradasData[key] || 0;
       const saidas = (Number(custosVariaveisData[key] || 0) + Number(custosFixosData[key] || 0));
+      const resultado = resultadoData[key] || 0;
       return {
         month: month.charAt(0).toUpperCase() + month.slice(1),
-        Entradas: entradasData[key] || 0,
+        Entradas: entradas,
         Saídas: saidas,
-        Resultado: resultadoData[key] || 0,
+        Resultado: resultado,
       };
-    });
-  }, []);
+    }).filter(item => item.Entradas > 0 || item.Saídas > 0 || item.Resultado !== 0);
+  }, [filteredData]);
 
-  const expenseColors = ["#22c55e", "#ef4444", "#3b82f6", "#f97316", "#8b5cf6", "#d946ef", "#14b8a6"];
-  const donutChartData = data.custos_operacionais_percentual
-    .filter(item => !["CUSTO OPERAÇÃO", "CUSTO TOTAL"].includes(item.nome) && item.saldo_total && item.saldo_total > 0)
-    .map(item => ({
-      name: item.nome.replace(/\/ OPERACIONAIS/g, "").trim(),
-      value: parseFloat(item.saldo_total.toFixed(2)),
-    }));
+
 
   const revenueGrowthData = useMemo(() => {
-    const totalSales = data.faturamento.find(
-      (item) => item.nome.trim() === "TOTAL VENDAS"
+
+
+    // Primeiro: verificar se há comparativo de recebimentos vs vendas
+    // Buscar por qualquer item que contenha os termos principais
+    let recebimentosVsVendas = null;
+    if (filteredData.comparativo_vendas_vs_recebimento) {
+      recebimentosVsVendas = filteredData.comparativo_vendas_vs_recebimento.find(
+        (item: any) => {
+          const nome = item.nome.trim().toUpperCase();
+          return nome.includes("RECEBIMENTOS") && nome.includes("VENDAS") && nome.includes("%");
+        }
+      );
+    }
+
+    if (recebimentosVsVendas && recebimentosVsVendas.saldo_total !== undefined) {
+      // Converter o valor para número de forma segura
+      const valor = Number(recebimentosVsVendas.saldo_total);
+
+      // Se o valor for NaN, usar 0 como fallback
+      const percentageValue = isNaN(valor) ? 0 : valor;
+
+      return {
+        percentage: percentageValue,
+        period: "período selecionado",
+        isPositive: percentageValue >= 0,
+      };
+    }
+
+    // Fallback: usar dados de faturamento
+    const totalSales = filteredData.faturamento?.find(
+      (item: any) => item.nome.trim() === "TOTAL VENDAS"
     );
     if (!totalSales)
-      return { percentage: 0, period: "mês anterior", isPositive: true };
+      return { percentage: 0, period: "período anterior", isPositive: true };
 
-    const currentMonthSales = totalSales.saldo_ago_2025;
-    const previousMonthSales = totalSales.saldo_jul_2025;
-    if (previousMonthSales === 0)
+    // Calcular crescimento baseado na diferença entre recebimentos e vendas no período
+    const vendasTotal = totalSales.saldo_total || 0;
+    const recebimentosTotal = filteredData.recebimentos?.find(
+      (item: any) => item.nome.trim() === "TOTAL RECEBIMENTOS"
+    )?.saldo_total || 0;
+
+    if (vendasTotal > 0) {
+      const eficienciaRecebimento = ((recebimentosTotal - vendasTotal) / vendasTotal) * 100;
       return {
-        percentage: currentMonthSales > 0 ? 100 : 0,
-        period: "Julho de 2025",
-        isPositive: true,
+        percentage: parseFloat(eficienciaRecebimento.toFixed(2)),
+        period: "eficiência de recebimento",
+        isPositive: eficienciaRecebimento >= 0,
       };
+    }
 
-    const percentage =
-      ((currentMonthSales - previousMonthSales) / previousMonthSales) * 100;
-    return {
-      percentage: parseFloat(percentage.toFixed(2)),
-      period: "Julho de 2025",
-      isPositive: percentage >= 0,
-    };
-  }, []);
+    return { percentage: 0, period: "período anterior", isPositive: true };
+  }, [filteredData]);
+
 
 
   const revenueCard = {
@@ -106,19 +208,57 @@ const VisaoFinanceiraContent = () => {
 
   // Nova lógica para o card de Faturamento vs. Projetado
   const faturamentoProjetadoData = useMemo(() => {
-    const comparativo = data.comparativo_faturamento_projetado_vs_realizado.find(
-      (item) => item.nome.trim() === "FATURAMENTO REALIZADO ÷ PROJETADO (%)"
+
+
+    // Definir um teto para não poluir a tela
+    const MAX_DISPLAY_PERCENTAGE = 999;
+
+    const comparativo = filteredData.comparativo_faturamento_projetado_vs_realizado?.find(
+      (item: any) => item.nome.trim() === "FATURAMENTO REALIZADO ÷ PROJETADO (%)"
     );
-    if (!comparativo) return { percentage: 0, isPositive: true };
-    const percentage = comparativo.saldo_total;
-    return {
-      percentage: parseFloat(percentage.toFixed(2)),
-      isPositive: percentage >= 0,
-    };
-  }, []);
+
+
+    if (comparativo && comparativo.saldo_total !== undefined) {
+      // O saldo_total aqui já é a variância final (ex: -34.07)
+      // Não precisa de cálculos adicionais
+      const performance = comparativo.saldo_total;
+
+      return {
+        percentage: parseFloat(performance.toFixed(2)),
+        isPositive: performance >= 0,
+      };
+    }
+
+    // Fallback: calcular baseado nos dados reais
+    const faturamentoProjetado = filteredData.comparativo_faturamento_projetado_vs_realizado?.find(
+      (item: any) => item.nome.trim() === "FATURAMENTO PROJETADO"
+    );
+    const faturamentoRealizado = filteredData.comparativo_faturamento_projetado_vs_realizado?.find(
+      (item: any) => item.nome.trim() === "FATURAMENTO REALIZADO"
+    );
+
+
+    if (faturamentoProjetado && faturamentoRealizado && faturamentoProjetado.saldo_total > 0) {
+      // Fórmula da Variância: ((Real / Projetado) * 100) - 100
+      let performance = ((faturamentoRealizado.saldo_total / faturamentoProjetado.saldo_total) * 100) - 100;
+
+      // Limita o valor máximo
+      if (performance > MAX_DISPLAY_PERCENTAGE) {
+        performance = MAX_DISPLAY_PERCENTAGE;
+      }
+
+      return {
+        percentage: parseFloat(performance.toFixed(2)),
+        isPositive: performance >= 0,
+      };
+    }
+
+    // Se chegou até aqui, não há dados suficientes
+    // Retorna 0% como fallback para que o card ainda apareça
+    return { percentage: 0, isPositive: true };
+  }, [filteredData]);
 
   const faturamentoProjetadoCard = {
-    percentage: faturamentoProjetadoData.percentage,
     isPositive: faturamentoProjetadoData.isPositive,
     Icon: faturamentoProjetadoData.isPositive ? TrendingUp : TrendingDown,
     text: faturamentoProjetadoData.isPositive ? "acima do projetado" : "abaixo do projetado",
@@ -126,16 +266,89 @@ const VisaoFinanceiraContent = () => {
   };
 
   const resultadoOperacionalProjetadoData = useMemo(() => {
-    const comparativo = data.comparativo_resultado_operacional_projetado_vs_realizado.find(
-      (item) => item.nome.trim() === "RESULT. OPERAC. REALIZADO ÷ PROJETADO (%)"
+
+
+    // Definir um teto para não poluir a tela
+    const MAX_DISPLAY_PERCENTAGE = 999;
+
+    const comparativo = filteredData.comparativo_resultado_operacional_projetado_vs_realizado?.find(
+      (item: any) => item.nome.trim() === "RESULT. OPERAC. REALIZADO ÷ PROJETADO (%)"
     );
-    if (!comparativo) return { percentage: 0, isPositive: true };
-    const percentage = comparativo.saldo_total;
-    return {
-      percentage: parseFloat(percentage.toFixed(2)),
-      isPositive: percentage >= 0,
-    };
-  }, []);
+
+
+    if (comparativo && comparativo.saldo_total !== undefined) {
+      // O saldo_total já é a variância final (ex: -107)
+      // Não precisa de cálculos adicionais
+      const performance = comparativo.saldo_total;
+
+      return {
+        percentage: parseFloat(performance.toFixed(2)),
+        isPositive: performance >= 0,
+      };
+    }
+
+    // Fallback: calcular baseado nos dados reais
+    const resultadoProjetado = filteredData.comparativo_resultado_operacional_projetado_vs_realizado?.find(
+      (item: any) => item.nome.trim() === "RESULTADO OPERACIONAL PROJETADO"
+    );
+    const resultadoRealizado = filteredData.comparativo_resultado_operacional_projetado_vs_realizado?.find(
+      (item: any) => item.nome.trim() === "RESULTADO OPERACIONAL REALIZADO"
+    );
+
+
+    if (resultadoProjetado && resultadoRealizado && resultadoProjetado.saldo_total > 0) {
+      // Fórmula da Variância: ((Real / Projetado) * 100) - 100
+      let performance = ((resultadoRealizado.saldo_total / resultadoProjetado.saldo_total) * 100) - 100;
+
+      // Limita o valor máximo
+      if (performance > MAX_DISPLAY_PERCENTAGE) {
+        performance = MAX_DISPLAY_PERCENTAGE;
+      }
+
+      return {
+        percentage: parseFloat(performance.toFixed(2)),
+        isPositive: performance >= 0,
+      };
+    }
+
+    // Fallback: usar resultado operacional vs meta do segmento
+    const resultadoOperacional = filteredData.evolucao_resultados_percentual?.find(
+      (item: any) => item.nome.trim() === "RESULTADO OPERACIONAL"
+    );
+
+    if (resultadoOperacional && resultadoOperacional.saldo_total !== undefined) {
+      // Pega a meta base do segmento. Se não houver, usa 5% como padrão
+      const metaBase = resultadoOperacional.media_seg || 5;
+      const resultadoReal = resultadoOperacional.saldo_total;
+
+      // Calcular meta ajustada ao período filtrado
+      const metaAjustada = calculateAdjustedMeta(metaBase, resultadoOperacional);
+
+      // Evitar divisão por zero ou metas irreais
+      if (metaAjustada < 0.1) {
+        // Se a meta ajustada é muito baixa e o resultado é positivo, 
+        // considera que bateu a meta (0% de variação, positivo)
+        return { percentage: 0, isPositive: resultadoReal > 0 };
+      }
+
+      // Fórmula da Variância: ((Real / Meta Ajustada) * 100) - 100
+      let performance = ((resultadoReal / metaAjustada) * 100) - 100;
+
+      // Limita o valor máximo
+      if (performance > MAX_DISPLAY_PERCENTAGE) {
+        performance = MAX_DISPLAY_PERCENTAGE;
+      }
+
+      return {
+        percentage: parseFloat(performance.toFixed(2)),
+        isPositive: performance >= 0,
+      };
+    }
+
+    // Se chegou até aqui, não há dados suficientes
+    // Retorna 0% como fallback para que o card ainda apareça
+    return { percentage: 0, isPositive: true };
+  }, [filteredData]);
 
   const resultadoOperacionalCard = {
     isPositive: resultadoOperacionalProjetadoData.isPositive,
@@ -346,7 +559,7 @@ const VisaoFinanceiraContent = () => {
             </div>
             <div className="flex items-end gap-1 mt-4">
               <NumberTicker
-                value={revenueGrowthData.percentage}
+                value={revenueGrowthData.percentage || 0}
                 decimalPlaces={2}
                 className={
                   revenueGrowthData.isPositive
@@ -362,64 +575,70 @@ const VisaoFinanceiraContent = () => {
               : "text-xs text-danger-500 mt-2"
             }>
               A receita {revenueCard.text}{" "}
-              {Math.abs(revenueGrowthData.percentage)}% em relação a{" "}
+              {Math.abs(isNaN(revenueGrowthData.percentage) ? 0 : revenueGrowthData.percentage)}% em relação a{" "}
               {revenueGrowthData.period}.
             </p>
           </Card>
 
           {/* CARD 2: Faturamento vs. Projetado */}
-          <Card
-            className={faturamentoProjetadoCard.isPositive ? "p-4 bg-[#e0e5fa]  dark:bg-gradient-to-br from-[#01026e] to-[#4344aa] transition-all duration-150 hover:-translate-y-1  hover:shadow-sm default: hover:shadow-gray-400 dark:hover:shadow-blue-400"
-              : "p-4 bg-[#f1d8d8]  dark:bg-gradient-to-br from-[#420000] to-[#6d2525] transition-all duration-150 hover:-translate-y-1 shadow-none hover:shadow-sm default: hover:shadow-gray-400 dark:hover:shadow-red-400"
-            }
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={faturamentoProjetadoCard.isPositive ? "text-sm text-primary-500"
-                  : "text-sm text-danger-500"
-                }>
-                  Faturamento vs. Projetado
-                </p>
-              </div>
-              <div
-                className={
-                  faturamentoProjetadoCard.isPositive
-                    ? "bg-primary-80 dark:bg-primary-500/20 p-2 rounded-lg"
-                    : "bg-danger-100 dark:bg-danger-500/20 p-2 rounded-lg"
-                }
-              >
-                <faturamentoProjetadoCard.Icon
-                  size={20}
+          {!isNaN(faturamentoProjetadoData.percentage) ? (
+            <Card
+              className={faturamentoProjetadoCard.isPositive ? "p-4 bg-[#e0e5fa]  dark:bg-gradient-to-br from-[#01026e] to-[#4344aa] transition-all duration-150 hover:-translate-y-1  hover:shadow-sm default: hover:shadow-gray-400 dark:hover:shadow-blue-400"
+                : "p-4 bg-[#f1d8d8]  dark:bg-gradient-to-br from-[#420000] to-[#6d2525] transition-all duration-150 hover:-translate-y-1 shadow-none hover:shadow-sm default: hover:shadow-gray-400 dark:hover:shadow-red-400"
+              }
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className={faturamentoProjetadoCard.isPositive ? "text-sm text-primary-500"
+                    : "text-sm text-danger-500"
+                  }>
+                    Faturamento vs. Projetado
+                  </p>
+                </div>
+                <div
                   className={
                     faturamentoProjetadoCard.isPositive
-                      ? "text-primary-500"
-                      : "text-danger-500"
+                      ? "bg-primary-80 dark:bg-primary-500/20 p-2 rounded-lg"
+                      : "bg-danger-100 dark:bg-danger-500/20 p-2 rounded-lg"
+                  }
+                >
+                  <faturamentoProjetadoCard.Icon
+                    size={20}
+                    className={
+                      faturamentoProjetadoCard.isPositive
+                        ? "text-primary-500"
+                        : "text-danger-500"
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex items-end gap-2 mt-4">
+                <NumberTicker
+                  value={faturamentoProjetadoData.percentage}
+                  decimalPlaces={2}
+                  className={
+                    faturamentoProjetadoCard.isPositive
+                      ? "text-2xl font-bold text-primary-600 dark:text-primary-600"
+                      : "text-2xl font-bold text-danger-500 dark:text-danger-500"
                   }
                 />
+                <span className={faturamentoProjetadoCard.isPositive
+                  ? "text-2xl font-bold text-primary-600 dark:text-primary-600"
+                  : "text-2xl font-bold text-danger-500 dark:text-danger-600"}>%</span>
               </div>
-            </div>
-            <div className="flex items-end gap-2 mt-4">
-              <NumberTicker
-                value={faturamentoProjetadoCard.percentage}
-                decimalPlaces={2}
-                className={
-                  faturamentoProjetadoCard.isPositive
-                    ? "text-2xl font-bold text-primary-600 dark:text-primary-600"
-                    : "text-2xl font-bold text-danger-500 dark:text-danger-500"
-                }
-              />
-              <span className={faturamentoProjetadoCard.isPositive
-                ? "text-2xl font-bold text-primary-600 dark:text-primary-600"
-                : "text-2xl font-bold text-danger-500 dark:text-danger-600"}>%</span>
-            </div>
-            <p className={faturamentoProjetadoCard.isPositive ? "text-xs text-primary-500 mt-2"
-              : "text-xs text-danger-500 mt-2"
-            }>
-              O faturamento realizado ficou{" "}
-              {Math.abs(faturamentoProjetadoData.percentage)}%{" "}
-              {faturamentoProjetadoCard.text}.
-            </p>
-          </Card>
+              <p className={faturamentoProjetadoCard.isPositive ? "text-xs text-primary-500 mt-2"
+                : "text-xs text-danger-500 mt-2"
+              }>
+                O faturamento realizado ficou{" "}
+                {Math.abs(faturamentoProjetadoData.percentage)}%{" "}
+                {faturamentoProjetadoCard.text}.
+              </p>
+            </Card>
+          ) : (
+            <Card className="p-4 bg-white dark:bg-[#141313] flex items-center justify-center">
+              <p className="text-sm text-gray-500">Faturamento vs. Projetado (N/A)</p>
+            </Card>
+          )}
 
           {/* CARD 3: Resultado vs. Projetado*/}
           <Card
@@ -463,7 +682,7 @@ const VisaoFinanceiraContent = () => {
                       : "text-2xl font-bold text-danger-500 dark:text-danger-500"
                   }
                 />
-                 <span className={resultadoOperacionalCard.isPositive
+                <span className={resultadoOperacionalCard.isPositive
                   ? "text-2xl font-bold text-purple-600 dark:text-purple-300"
                   : "text-2xl font-bold text-danger-500"}>%</span>
               </div>

@@ -3,6 +3,7 @@ import { Card } from "@heroui/card";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { Progress } from '@heroui/progress';
 import { NumberTicker } from './ui/number-ticker';
+import { useWatchTheme } from '@/hooks/WatchTheme';
 
 interface PositiveColorClasses {
     card: string;
@@ -32,6 +33,7 @@ export interface CardsProps {
 export default function Cards({ title, subtitle, value, Icon, meta, isPositive, colors, showProgress = false, showMeta = true, showDescription = false, description, prefix = "", suffix = "" }: CardsProps) {
 
     const behaviorClasses = "transition-all duration-150 hover:-translate-y-1 shadow-md hover:shadow-lg";
+    const { isDarkMode } = useWatchTheme();
 
     const negativeColors = {
         card: "p-4 bg-[#f1d8d8] dark:bg-gradient-to-br from-[#420000] to-[#6d2525]",
@@ -40,7 +42,7 @@ export default function Cards({ title, subtitle, value, Icon, meta, isPositive, 
         titleText: "text-sm text-red-500 dark:text-red-300",
         subTitleText: "text-xs text-red-700 dark:text-red-300",
         valueText: "text-3xl font-bold text-red-500 dark:text-red-300",
-        descriptionText: "text-xs text-gray-500",
+        descriptionText: isDarkMode ? "text-md text-gray-400" : "text-md text-gray-500",
         metaText: "text-red-700 dark:text-red-300",
         shadowHoverClass: "dark:hover:shadow-red-500/50"
     };
@@ -51,7 +53,7 @@ export default function Cards({ title, subtitle, value, Icon, meta, isPositive, 
         icon: colors.icon,
         titleText: `text-sm ${colors.text}`,
         subTitleText: `text-xs ${colors.text}`,
-        descriptionText: 'text-md text-gray-500',
+        descriptionText: isDarkMode ? 'text-md text-gray-400' : 'text-md text-gray-500',
         valueText: `${colors.text.replace('text-sm', 'text-3xl font-bold')} dark:text-current`,
         metaText: colors.text,
         shadowHoverClass: colors.shadowHoverClass

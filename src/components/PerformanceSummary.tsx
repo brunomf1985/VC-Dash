@@ -1,27 +1,30 @@
 import { useMemo } from 'react';
-import dataFromJson from '../pages/exemplo.json';
 import { RegistroFinanceiro } from '@/pages/types';
 import { BorderBeam } from './ui/border-beam';
+import { useFilter } from '@/hooks/useFilter';
 
 export default function PerformanceSummary() {
+    const { filteredData } = useFilter();
 
     const summaryData = useMemo(() => {
         const meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
-        const resultadoFinal: RegistroFinanceiro | undefined = dataFromJson.evolucao_resultados_percentual.find(
+        const resultadoFinal: RegistroFinanceiro | undefined = filteredData.evolucao_resultados_percentual.find(
             (item: RegistroFinanceiro) => item.nome.trim() === "RESULTADO FINAL"
         );
         const lucroInicial = resultadoFinal?.saldo_jan_2025 ?? 0;
         const lucroFinal = resultadoFinal?.saldo_ago_2025 ?? 0;
         const lucroCrescimento = lucroFinal - lucroInicial;
 
-        const ticketMedioObj: RegistroFinanceiro | undefined = dataFromJson.faturamento.find(
-            (item: RegistroFinanceiro) => item.nome.trim() === "TICKET MÉDIO"
+        const ticketMedioObj: RegistroFinanceiro | undefined = filteredData?.faturamento?.find(
+            (item: RegistroFinanceiro) => item.nome?.trim() === "TICKET MÉDIO"
         );
-        const ticketsMensais = meses.map(m => ticketMedioObj?.[`saldo_${m}_2025`] ?? 0);
-        const maiorTicketMedio = Math.max(...ticketsMensais.filter(t => t > 0));
+        
+        // Proteção para quando não há dados de ticket médio
+        const ticketsMensais = ticketMedioObj ? meses.map(m => ticketMedioObj?.[`saldo_${m}_2025`] ?? 0) : [];
+        const maiorTicketMedio = ticketsMensais.length > 0 ? Math.max(...ticketsMensais.filter(t => t > 0)) : 0;
 
-        const custosObj: RegistroFinanceiro | undefined = dataFromJson.custos_operacionais_percentual.find(
+        const custosObj: RegistroFinanceiro | undefined = filteredData.custos_operacionais_percentual.find(
             (item: RegistroFinanceiro) => item.nome.trim() === "COMERCIAIS"
         );
 
@@ -37,7 +40,7 @@ export default function PerformanceSummary() {
             maiorTicketMedio,
             menorCustoComercial: menorCustoComercial === Infinity ? 0 : menorCustoComercial
         };
-    }, []);
+    }, [filteredData]);
 
     const SummaryItem = ({ value, label, colorClass }: { value: string, label: string, colorClass: string }) => (
         <div className="flex flex-col items-center text-center">

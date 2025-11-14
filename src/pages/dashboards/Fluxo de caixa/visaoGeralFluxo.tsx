@@ -20,22 +20,104 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import { Card, CardHeader, CardBody } from "@heroui/card";
 import { ValueType } from "recharts/types/component/DefaultTooltipContent";
 
-import data from "../../exemplo.json";
-
 import { RegistroFinanceiro } from "@/pages/types";
 import { PageTransition } from "@/components/PageTransiotion";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { CustomTooltip } from "@/components/CustomTooltip";
 import { useWatchTheme } from "@/hooks/WatchTheme";
+import { useFilter } from "@/hooks/useFilter";
 
 export default function VisaoGeralFluxo() {
   const { isDarkMode } = useWatchTheme();
+  const { filteredData, hasData, isLoadingApi } = useFilter();
 
+  // Early return se não há dados disponíveis
+  if (isLoadingApi) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-500">Carregando dados do fluxo de caixa...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasData || !filteredData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-gray-500 mb-2">Nenhum dado disponível</p>
+          <p className="text-sm text-gray-400">Faça login e selecione um cliente para carregar dados da API</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Validar se os campos necessários para Fluxo de Caixa existem
+  const requiredFields = ['faturamento', 'recebimentos', 'evolucao_resultados_valor'];
+  const missingFields = requiredFields.filter(field => !filteredData[field]);
+  
+  if (missingFields.length > 0) {
+    console.warn('Campos necessários para Fluxo de Caixa não encontrados:', missingFields);
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-gray-500 mb-2">Dados insuficientes para Fluxo de Caixa</p>
+          <p className="text-sm text-gray-400">Alguns dados necessários não estão disponíveis para este cliente</p>
+          <p className="text-xs text-gray-400 mt-2">Campos faltando: {missingFields.join(', ')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 1. LÓGICA ADICIONADA: Encontrar a última data com dados válidos
+  const dataBaseUltimoMes = useMemo(() => {
+    // Verificar se filteredData e faturamento existem
+    if (!filteredData || !filteredData.faturamento) return new Date(); // Fallback
+    
+    // Usar 'TOTAL VENDAS' como a fonte da verdade para a data mais recente
+    const faturamentoData = filteredData.faturamento.find(
+      (item: any) => item.nome?.trim().toUpperCase() === "TOTAL VENDAS"
+    );
+
+    if (!faturamentoData) return new Date(); // Fallback
+
+    const mesesMap: { [key: string]: number } = {
+      'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+      'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11
+    };
+
+    let ultimaDataEncontrada: Date | null = null;
+
+    for (const key in faturamentoData) {
+      if (key.startsWith('saldo_')) {
+        const parts = key.split('_');
+        const valor = Number((faturamentoData as any)[key] || 0);
+
+        if (parts.length === 3 && valor > 0) {
+          const mesAbrev = parts[1];
+          const ano = parseInt(parts[2], 10);
+          const mesIndex = mesesMap[mesAbrev];
+
+          if (mesIndex !== undefined && !isNaN(ano)) {
+            const dataAtual = new Date(ano, mesIndex, 1);
+            if (!ultimaDataEncontrada || dataAtual > ultimaDataEncontrada) {
+              ultimaDataEncontrada = dataAtual;
+            }
+          }
+        }
+      }
+    }
+
+    return ultimaDataEncontrada || new Date();
+  }, [filteredData]);
+
+  // 2. CORRIGIDO: faturamentoMesAtual
   const faturamentoMesAtual = useMemo(() => {
-    const hoje = new Date();
-
-    // 1. Define o período: o mês atual
-    const dataMesAtual = new Date(hoje.getFullYear(), hoje.getMonth(),-1, 1);
+    // REMOVIDO: const hoje = new Date();
+    // 1. Define o período: o último mês com dados
+    const dataMesAtual = dataBaseUltimoMes; // CORRIGIDO
 
     // 2. Reutiliza sua função helper
     const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
@@ -51,8 +133,8 @@ export default function VisaoGeralFluxo() {
     const chaveMesAtual = criarChaveDoMes(dataMesAtual);
 
     // 4. Busca a linha de "TOTAL VENDAS"
-    const faturamentoData = data.faturamento.find(
-      (item) => item.nome.trim() === "TOTAL VENDAS",
+    const faturamentoData = filteredData.faturamento.find(
+      (item: any) => item.nome.trim() === "TOTAL VENDAS",
     );
 
     const meta = 1000000; // Exemplo de meta
@@ -66,7 +148,6 @@ export default function VisaoGeralFluxo() {
     }
 
     // 6. Pega o valor
-    // Se a chave (ex: 'saldo_out_2025') não existir no JSON, o valor será 0.
     const valorMesAtual = Number((faturamentoData as any)[chaveMesAtual] || 0);
 
     // 7. Formata o nome para exibição
@@ -82,13 +163,13 @@ export default function VisaoGeralFluxo() {
       meta: meta,
       IsPositive: valorMesAtual >= meta,
     };
-  }, [data]);
+  }, [filteredData, dataBaseUltimoMes]); // ADICIONADA dependência
 
+  // 3. CORRIGIDO: entradasMesAtual
   const entradasMesAtual = useMemo(() => {
-    const hoje = new Date();
-
-    // 1. Define o período: o mês atual
-    const dataMesAtual = new Date(hoje.getFullYear(), hoje.getMonth(),-1, 1);
+    // REMOVIDO: const hoje = new Date();
+    // 1. Define o período: o último mês com dados
+    const dataMesAtual = dataBaseUltimoMes; // CORRIGIDO
 
     // 2. Reutiliza sua função helper
     const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
@@ -103,12 +184,11 @@ export default function VisaoGeralFluxo() {
     // 3. Cria a chave para buscar no JSON
     const chaveMesAtual = criarChaveDoMes(dataMesAtual);
 
-    // 4. MODIFICADO: Busca a linha de "TOTAL RECEBIMENTOS" em data.recebimentos
-    const entradasData = data.recebimentos.find(
-      (item) => item.nome.trim() === "TOTAL RECEBIMENTOS",
+    // 4. MODIFICADO: Busca a linha de "TOTAL RECEBIMENTOS" em filteredData.recebimentos
+    const entradasData = filteredData.recebimentos.find(
+      (item: any) => item.nome.trim() === "TOTAL RECEBIMENTOS",
     );
 
-    // Você pode definir uma meta específica para as entradas
     const meta = 800000;
 
     // 5. Lógica de fallback
@@ -137,13 +217,13 @@ export default function VisaoGeralFluxo() {
       meta: meta,
       IsPositive: valorMesAtual >= meta,
     };
-  }, [data]);
+  }, [filteredData, dataBaseUltimoMes]); // ADICIONADA dependência
 
+  // 4. CORRIGIDO: saidasMesAtual
   const saidasMesAtual = useMemo(() => {
-    const hoje = new Date();
-
-    // 1. Define o período: o mês atual
-    const dataMesAtual = new Date(hoje.getFullYear(), hoje.getMonth(),-1, 1);
+    // REMOVIDO: const hoje = new Date();
+    // 1. Define o período: o último mês com dados
+    const dataMesAtual = dataBaseUltimoMes; // CORRIGIDO
 
     // 2. Reutiliza sua função helper
     const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
@@ -158,15 +238,14 @@ export default function VisaoGeralFluxo() {
     // 3. Cria a chave para buscar no JSON
     const chaveMesAtual = criarChaveDoMes(dataMesAtual);
 
-    // 4. Busca os dados de custos em data.evolucao_resultados_valor
-    const custosVariaveisData = data.evolucao_resultados_valor.find(
-      (item) => item.nome.trim() === "CUSTOS VARIÁVEIS",
+    // 4. Busca os dados de custos em filteredData.evolucao_resultados_valor
+    const custosVariaveisData = filteredData.evolucao_resultados_valor.find(
+      (item: any) => item.nome.trim() === "CUSTOS VARIÁVEIS",
     );
-    const custosFixosData = data.evolucao_resultados_valor.find(
-      (item) => item.nome.trim() === "CUSTOS FIXOS OPERACIONAIS",
+    const custosFixosData = filteredData.evolucao_resultados_valor.find(
+      (item: any) => item.nome.trim() === "CUSTOS FIXOS OPERACIONAIS",
     );
 
-    // Define uma meta de gastos (ex: limite de R$ 850.000)
     const meta = 850000;
 
     // 5. Lógica de fallback
@@ -175,7 +254,7 @@ export default function VisaoGeralFluxo() {
         valor: 0,
         nome: "N/A",
         meta: meta,
-        IsPositive: true, // Positivo se for 0 (abaixo da meta)
+        IsPositive: true,
       };
     }
 
@@ -197,49 +276,39 @@ export default function VisaoGeralFluxo() {
       valor: valorMesAtual,
       nome: nomeFormatado,
       meta: meta,
-      // É "Positivo" (bom) se a saída for MENOR ou igual à meta
       IsPositive: valorMesAtual <= meta,
     };
-  }, [data]);
+  }, [filteredData, dataBaseUltimoMes]); // ADICIONADA dependência
 
+  // Este hook não precisa de 'dataBaseUltimoMes' pois já depende dos hooks corrigidos
   const fluxoOperacionalMesAtual = useMemo(() => {
-    // 1. Calcula o valor do fluxo
     const valorFluxo = entradasMesAtual.valor - saidasMesAtual.valor;
-
-    // 2. Define se o resultado é positivo (bom)
-    const isPositive = valorFluxo >= 0;
-
-    // 3. Define uma meta (ex: fluxo de caixa positivo de R$ 50.000)
     const meta = 50000;
 
     return {
       valor: valorFluxo,
       nome: entradasMesAtual.nome, // Reutiliza o nome do mês
       meta: meta,
-      // É "Positivo" se o fluxo for MAIOR ou igual à meta
       IsPositive: valorFluxo >= meta,
     };
-    // 4. Define as dependências. Este hook depende dos outros dois.
   }, [entradasMesAtual, saidasMesAtual]);
 
+  // 5. CORRIGIDO: barChartData
   const barChartData = useMemo(() => {
-    // 1. Buscar as fontes de dados
-    const entradasData = data.recebimentos.find(
-      (item) => item.nome.trim() === "TOTAL RECEBIMENTOS",
+    const entradasData = filteredData.recebimentos.find(
+      (item: any) => item.nome.trim() === "TOTAL RECEBIMENTOS",
     );
-    const custosVariaveisData = data.evolucao_resultados_valor.find(
-      (item) => item.nome.trim() === "CUSTOS VARIÁVEIS",
+    const custosVariaveisData = filteredData.evolucao_resultados_valor.find(
+      (item: any) => item.nome.trim() === "CUSTOS VARIÁVEIS",
     );
-    const custosFixosData = data.evolucao_resultados_valor.find(
-      (item) => item.nome.trim() === "CUSTOS FIXOS OPERACIONAIS",
+    const custosFixosData = filteredData.evolucao_resultados_valor.find(
+      (item: any) => item.nome.trim() === "CUSTOS FIXOS OPERACIONAIS",
     );
 
-    // 2. Fallback se os dados principais não existirem
     if (!entradasData || !custosVariaveisData || !custosFixosData) {
       return [];
     }
 
-    // 3. Função helper para criar a chave do mês
     const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
       const mesAbrev = data
         .toLocaleString("pt-BR", { month: "short" })
@@ -250,9 +319,10 @@ export default function VisaoGeralFluxo() {
     };
 
     const mesesProcessados = [];
-    const hoje = new Date();
+    // REMOVIDO: const hoje = new Date();
+    const hoje = dataBaseUltimoMes; // CORRIGIDO
 
-    // 4. Loop de 12 meses
+    // 4. Loop de 12 meses (agora baseado na dataBase)
     for (let i = 11; i >= 0; i--) {
       const dataDoPeriodo = new Date(
         hoje.getFullYear(),
@@ -275,7 +345,6 @@ export default function VisaoGeralFluxo() {
 
       const chaveDoMes = criarChaveDoMes(dataDoPeriodo);
 
-      // 5. Calcular valores para o mês
       const valorEntradas = Number((entradasData as any)[chaveDoMes] || 0);
       const valorCustoVariavel = Number(
         (custosVariaveisData as any)[chaveDoMes] || 0,
@@ -285,7 +354,6 @@ export default function VisaoGeralFluxo() {
       const valorSaidas = valorCustoVariavel + valorCustoFixo;
       const valorResultado = valorEntradas - valorSaidas;
 
-      // 6. Adicionar ao array (se houver dados)
       if (valorEntradas > 0 || valorSaidas > 0) {
         mesesProcessados.push({
           name: `${mesAbrevCapitalizado} ${ano}`,
@@ -297,8 +365,8 @@ export default function VisaoGeralFluxo() {
       }
     }
 
-    return mesesProcessados; // Retorna o array de dados diretamente
-  }, [data]);
+    return mesesProcessados;
+  }, [filteredData, dataBaseUltimoMes]); // ADICIONADA dependência
 
   const tooltipValueFormatter = (value: ValueType) => {
     if (typeof value === "number") {
@@ -323,8 +391,6 @@ export default function VisaoGeralFluxo() {
     return `saldo_${mesAbrev}_${ano}` as keyof RegistroFinanceiro;
   };
 
-  // Lógica de cores para os Badges
-  // (A lógica da imagem não é clara, então criei uma simples: >= 95% é bom)
   const getBadgeClass = (taxa: number) => {
     const baseClass = "px-3 py-1 text-sm font-medium rounded-full";
 
@@ -335,27 +401,34 @@ export default function VisaoGeralFluxo() {
     return `${baseClass} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300`;
   };
 
-  // Badge especial para a média/total (azul/roxo como na imagem)
   const totalBadgeClass =
     "px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
 
+  // 6. CORRIGIDO: processedData
   const processedData = useMemo(() => {
-    const taxaData = data.comparativo_vendas_vs_recebimento.find(
-      (item) => item.nome.trim() === "RECEBIMENTOS ÷ VENDAS (%)",
+    // Verificar se o campo comparativo existe
+    if (!filteredData.comparativo_vendas_vs_recebimento) {
+      console.warn('Campo comparativo_vendas_vs_recebimento não encontrado');
+      return { meses: [], media: 0 };
+    }
+
+    const taxaData = filteredData.comparativo_vendas_vs_recebimento.find(
+      (item: any) => item.nome === "RECEBIMENTOS ÷ VENDAS (%)",
     );
-    // Usamos faturamento para exibir apenas meses que tiveram vendas
-    const vendasData = data.faturamento.find(
-      (item) => item.nome.trim() === "TOTAL VENDAS",
+    const vendasData = filteredData.faturamento.find(
+      (item: any) => item.nome.trim() === "TOTAL VENDAS",
     );
 
     if (!taxaData || !vendasData) {
+      console.warn('Dados necessários para processedData não encontrados:', { taxaData: !!taxaData, vendasData: !!vendasData });
       return { meses: [], media: 0 };
     }
 
     const mesesProcessados: { mes: string; taxa: number }[] = [];
-    const hoje = new Date();
+    // REMOVIDO: const hoje = new Date();
+    const hoje = dataBaseUltimoMes; // CORRIGIDO
 
-    // Itera pelos últimos 12 meses (mesma lógica do gráfico)
+    // Itera pelos últimos 12 meses (agora baseado na dataBase)
     for (let i = 11; i >= 0; i--) {
       const dataDoPeriodo = new Date(
         hoje.getFullYear(),
@@ -365,15 +438,12 @@ export default function VisaoGeralFluxo() {
       const ano = dataDoPeriodo.getFullYear();
       const chaveDoMes = criarChaveDoMes(dataDoPeriodo);
 
-      // 1. Só mostra o mês se houver vendas
       const valorVenda = Number((vendasData as any)[chaveDoMes] || 0);
 
       if (valorVenda > 0) {
-        // 2. Calcula a taxa real
         const taxaDiferenca = Number((taxaData as any)[chaveDoMes] || 0);
         const taxaReal = 100 + taxaDiferenca;
 
-        // 3. Formata o nome do mês (ex: "Mai/2025")
         const mesAbrev = dataDoPeriodo
           .toLocaleString("pt-BR", { month: "short" })
           .replace(".", "");
@@ -388,15 +458,14 @@ export default function VisaoGeralFluxo() {
       }
     }
 
-    // 4. Calcula a média total
     const media = 100 + (Number(taxaData.saldo_total) || 0);
 
     return { meses: mesesProcessados, media: media };
-  }, [data]);
+  }, [filteredData, dataBaseUltimoMes]); // ADICIONADA dependência
 
   return (
     <PageTransition>
-      <div className="p-4 space-y-4">
+      <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card
             className="p-4 bg-[#d8f1e0] dark:bg-gradient-to-br from-[#004216] to-[#186431]

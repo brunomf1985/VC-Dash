@@ -1,6 +1,6 @@
 import Cards from "@/components/Cards"
 import { useMemo } from "react"
-import data from "../../exemplo.json"
+import { useFilter } from '@/hooks/useFilter';
 import { RegistroFinanceiro } from "@/pages/types";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { PageTransition } from "@/components/PageTransiotion";
@@ -11,14 +11,88 @@ import { useWatchTheme } from "@/hooks/WatchTheme";
 import { CustomTooltip } from "@/components/CustomTooltip";
 
 export default function EvolucaoPerformance() {
-
+    const { filteredData, hasData, isLoadingApi } = useFilter();
     const { isDarkMode } = useWatchTheme();
 
-    const crescimentoMensal = useMemo(() => {
-        const hoje = new Date();
+    // Early return se não há dados disponíveis
+    if (isLoadingApi) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-gray-500">Carregando evolução de performance...</p>
+                </div>
+            </div>
+        );
+    }
 
-        const dataMesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-        const dataMesRetrasado = new Date(hoje.getFullYear(), hoje.getMonth() - 2, 1);
+    if (!hasData || !filteredData) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                    <p className="text-gray-500 mb-2">Nenhum dado disponível</p>
+                    <p className="text-sm text-gray-400">Faça login e selecione um cliente para carregar dados da API</p>
+                </div>
+            </div>
+        );
+    }
+
+    const dataBaseUltimoMes = useMemo(() => {
+        const faturamentoData = filteredData?.faturamento?.find(
+            (item: any) => item.nome?.trim() === "TOTAL VENDAS"
+        );
+
+        // Se não encontrar dados de faturamento, retorna a data de hoje como fallback
+        if (!faturamentoData) {
+            return new Date();
+        }
+
+        // Mapeia os meses em português para números (0-11)
+        const mesesMap: { [key: string]: number } = {
+            'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+            'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11
+        };
+
+        let ultimaDataEncontrada: Date | null = null;
+
+        // Itera sobre todas as chaves do objeto 'TOTAL VENDAS'
+        for (const key in faturamentoData) {
+            // Verifica se é uma chave de saldo (ex: 'saldo_nov_2025')
+            if (key.startsWith('saldo_')) {
+                const parts = key.split('_'); // ['saldo', 'mes', 'ano']
+
+                // Verifica se o valor é maior que 0
+                const valor = Number((faturamentoData as any)[key] || 0);
+
+                if (parts.length === 3 && valor > 0) {
+                    const mesAbrev = parts[1];
+                    const ano = parseInt(parts[2], 10);
+                    const mesIndex = mesesMap[mesAbrev];
+
+                    if (mesIndex !== undefined && !isNaN(ano)) {
+                        const dataAtual = new Date(ano, mesIndex, 1);
+
+                        // Atualiza a 'ultimaDataEncontrada' se a data_atual for mais recente
+                        if (!ultimaDataEncontrada || dataAtual > ultimaDataEncontrada) {
+                            ultimaDataEncontrada = dataAtual;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Retorna a última data encontrada ou a data de hoje como fallback
+        return ultimaDataEncontrada || new Date();
+
+    }, [filteredData]); // Depende apenas dos 'filteredData'
+
+    const crescimentoMensal = useMemo(() => {
+        // REMOVIDO: const hoje = new Date();
+
+        // ADICIONADO: Usamos a data base como o "mês anterior" da sua lógica original
+        const dataMesAnterior = dataBaseUltimoMes;
+        // E calculamos o "mês retrasado" com base nela
+        const dataMesRetrasado = new Date(dataBaseUltimoMes.getFullYear(), dataBaseUltimoMes.getMonth() - 1, 1);
 
         const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
             const mesAbrev = data.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
@@ -29,8 +103,8 @@ export default function EvolucaoPerformance() {
         const chaveMesAnterior = criarChaveDoMes(dataMesAnterior);
         const chaveMesRetrasado = criarChaveDoMes(dataMesRetrasado);
 
-        const faturamentoData = data.faturamento.find(
-            (item) => item.nome.trim() === "TOTAL VENDAS"
+        const faturamentoData = filteredData?.faturamento?.find(
+            (item: any) => item.nome?.trim() === "TOTAL VENDAS"
         );
         if (!faturamentoData) {
             return {
@@ -64,14 +138,16 @@ export default function EvolucaoPerformance() {
             nomeMesAnterior: nomeMesAnterior.charAt(0).toUpperCase() + nomeMesAnterior.slice(1),
             nomeMesRetrasado: nomeMesRetrasado.charAt(0).toUpperCase() + nomeMesRetrasado.slice(1),
         };
-    }, [data]);
+
+        // ADICIONADO: dataBaseUltimoMes como dependência
+    }, [filteredData, dataBaseUltimoMes]);
 
     const crescimentoPeriodo = useMemo(() => {
-        const hoje = new Date();
+        // REMOVIDO: const hoje = new Date();
 
         // 1. Define os dois períodos de comparação
-        const dataMesAnterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-        const dataJaneiroEsteAno = new Date(hoje.getFullYear(), 0, 1); // Mês 0 = Janeiro
+        const dataMesAnterior = dataBaseUltimoMes; // Mês anterior da sua lógica = Último mês registrado
+        const dataJaneiroEsteAno = new Date(dataBaseUltimoMes.getFullYear(), 0, 1); // Janeiro do ano do último mês
 
         // 2. Reutiliza sua função helper
         const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
@@ -85,8 +161,8 @@ export default function EvolucaoPerformance() {
         const chaveJaneiroEsteAno = criarChaveDoMes(dataJaneiroEsteAno);
 
         // 4. Busca a linha de "TOTAL VENDAS"
-        const faturamentoData = data.faturamento.find(
-            (item) => item.nome.trim() === "TOTAL VENDAS"
+        const faturamentoData = filteredData?.faturamento?.find(
+            (item: any) => item.nome?.trim() === "TOTAL VENDAS"
         );
 
         // 5. Lógica de fallback
@@ -127,11 +203,13 @@ export default function EvolucaoPerformance() {
             // Adiciona o ano em Janeiro para clareza
             nomeJaneiro: `${nomeJaneiro.charAt(0).toUpperCase() + nomeJaneiro.slice(1)} ${dataJaneiroEsteAno.getFullYear()}`,
         };
-    }, [data]);
+
+        // ADICIONADO: dataBaseUltimoMes como dependência
+    }, [filteredData, dataBaseUltimoMes]);
 
     const melhorTrimestreAno = useMemo(() => {
-        const hoje = new Date();
-        const anoAtual = hoje.getFullYear();
+        // REMOVIDO: const hoje = new Date();
+        const anoAtual = dataBaseUltimoMes.getFullYear(); // ADICIONADO: Usa o ano da data base
 
         // 1. Reutiliza sua função helper para criar a chave do JSON
         const criarChaveDoMes = (data: Date): keyof RegistroFinanceiro => {
@@ -141,8 +219,8 @@ export default function EvolucaoPerformance() {
         };
 
         // 2. Encontra a linha de faturamento
-        const faturamentoData = data.faturamento.find(
-            (item) => item.nome.trim() === "TOTAL VENDAS"
+        const faturamentoData = filteredData?.faturamento?.find(
+            (item: any) => item.nome?.trim() === "TOTAL VENDAS"
         );
 
         // 3. Função de fallback
@@ -191,29 +269,33 @@ export default function EvolucaoPerformance() {
             valor: melhorTrimestre.valor
         };
 
-    }, [data]);
+        // ADICIONADO: dataBaseUltimoMes como dependência
+    }, [filteredData, dataBaseUltimoMes]);
 
     const { data: barChartData, keys: barKeys } = useMemo(() => {
-        const secoesData = data.vendas_por_secao;
+        const secoesData = filteredData?.vendas_por_secao;
 
         if (!secoesData || secoesData.length === 0) {
             return { data: [], keys: [] };
         }
 
         const nomesSecoes = secoesData
-            .map(secao => secao.nome.trim())
-            .filter(nome => nome.toUpperCase() !== 'OUTROS');
+            .map((secao: any) => secao.nome.trim())
+            .filter((nome: string) => nome.toUpperCase() !== 'OUTROS');
 
-        const temOutros = secoesData.some(s => s.nome.trim().toUpperCase() === 'OUTROS');
+        const temOutros = secoesData.some((s: any) => s.nome.trim().toUpperCase() === 'OUTROS');
         if (temOutros) {
             nomesSecoes.push('OUTROS');
         }
 
         const mesesProcessados = [];
-        const hoje = new Date();
+        // REMOVIDO: const hoje = new Date();
+        // ADICIONADO: Usamos a data base como referência
+        const dataBase = dataBaseUltimoMes;
 
         for (let i = 11; i >= 0; i--) {
-            const dataDoPeriodo = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+            // CORRIGIDO: O loop agora é relativo à 'dataBase'
+            const dataDoPeriodo = new Date(dataBase.getFullYear(), dataBase.getMonth() - i, 1);
             const ano = dataDoPeriodo.getFullYear();
 
             const mesAbrev = dataDoPeriodo.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
@@ -241,6 +323,9 @@ export default function EvolucaoPerformance() {
                 }
             }
 
+            // Esta lógica de 'totalMes > 0' agora funciona corretamente,
+            // pois ela só vai pular meses antigos sem dados,
+            // e não os meses futuros que ainda não aconteceram.
             if (totalMes > 0) {
                 mesesProcessados.push(mesProcessado);
             }
@@ -248,7 +333,8 @@ export default function EvolucaoPerformance() {
 
         return { data: mesesProcessados, keys: nomesSecoes };
 
-    }, [data]);
+        // ADICIONADO: dataBaseUltimoMes como dependência
+    }, [filteredData, dataBaseUltimoMes]);
 
     const tooltipValueFormatter = (value: ValueType,) => {
         if (typeof value === 'number') {
@@ -304,9 +390,9 @@ export default function EvolucaoPerformance() {
                                     cursor={{ fill: isDarkMode ? 'rgba(75, 85, 99, 0.2)' : 'rgba(209, 213, 219, 0.3)' }}
                                     content={<CustomTooltip valueFormatter={tooltipValueFormatter} />}
                                 />
-                                <Legend iconType="square" align="left"/>
+                                <Legend iconType="square" align="left" />
 
-                                {barKeys.map((key, index) => (
+                                {barKeys.map((key: any, index: number) => (
                                     <Bar
                                         key={key}
                                         dataKey={key}
@@ -347,9 +433,9 @@ export default function EvolucaoPerformance() {
                                     cursor={{ fill: isDarkMode ? 'rgba(75, 85, 99, 0.2)' : 'rgba(209, 213, 219, 0.3)' }}
                                     content={<CustomTooltip valueFormatter={tooltipValueFormatter} />}
                                 />
-                                <Legend iconType="square"/>
+                                <Legend iconType="square" />
 
-                                {barKeys.map((key, index) => (
+                                {barKeys.map((key: any, index: number) => (
                                     <Bar
                                         key={key}
                                         dataKey={key}
